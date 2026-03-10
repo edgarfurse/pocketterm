@@ -2,7 +2,6 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
 
 ## 0.9.2 - 2026-03-10
 
@@ -32,7 +31,7 @@ All notable changes to this project are documented in this file.
 - `curl` now returns realistic error surfaces for HTTP failure (`(22)`), redirects without `-L` (`(47)`), and output write failures (`(23)`)
 - Release check script now includes tests in addition to lint and build
 
-## 1.0.0 - 2026-02-26
+## 0.9.0 - 2026-02-26
 
 ### Added
 
