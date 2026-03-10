@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# PRO/ENTERPRISE SEGMENTATION
+pro-experimental/
+ios-builds/
+internal-notes/
+ai-prompts-private/
+.env
