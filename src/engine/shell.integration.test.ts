@@ -216,4 +216,103 @@ describe('shell package path integration', () => {
     const editorOut = outputs.slice(start).join('');
     expect(editorOut).toContain('vim');
   });
+
+  it('executes sh scripts sequentially and handles missing files', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    let start = outputs.length;
+    await shell.execute('echo "ls" > test.sh');
+    await shell.execute('sh test.sh');
+    const shOut = outputs.slice(start).join('');
+    expect(shOut).toContain('Documents');
+
+    start = outputs.length;
+    await shell.execute('sh missing.sh');
+    const missingOut = outputs.slice(start).join('');
+    expect(missingOut).toContain('sh: missing.sh: No such file or directory');
+    expect(shell.getLastExitCode()).toBe(1);
+  });
+
+  it('supports script xtrace, set +e continuation, and line-numbered failures', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('echo "falsecmd" > strict.sh');
+    let start = outputs.length;
+    await shell.execute('sh strict.sh');
+    const strictOut = outputs.slice(start).join('');
+    expect(strictOut).toContain('strict.sh:1: command exited with status 127');
+    expect(shell.getLastExitCode()).toBe(127);
+
+    await shell.execute('echo "set +e" > continue.sh');
+    await shell.execute('echo "falsecmd" >> continue.sh');
+    await shell.execute('echo "ls" >> continue.sh');
+    start = outputs.length;
+    await shell.execute('bash -x continue.sh');
+    const continueOut = outputs.slice(start).join('');
+    expect(continueOut).toContain('+ set +e');
+    expect(continueOut).toContain('+ falsecmd');
+    expect(continueOut).toContain('continue.sh:2: command exited with status 127');
+    expect(continueOut).toContain('+ ls');
+    expect(continueOut).toContain('Documents');
+    expect(shell.getLastExitCode()).toBe(0);
+  });
+
+  it('exposes /proc/cpuinfo and /proc/meminfo for cat', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    let start = outputs.length;
+    await shell.execute('cat /proc/cpuinfo');
+    const cpuinfo = outputs.slice(start).join('');
+    expect(cpuinfo).toContain('Virtualized PocketTerm CPU');
+
+    start = outputs.length;
+    await shell.execute('cat /proc/meminfo');
+    const meminfo = outputs.slice(start).join('');
+    expect(meminfo).toContain('MemTotal:');
+    expect(meminfo).toContain('2097152 kB');
+
+    start = outputs.length;
+    await shell.execute('cat /proc/uptime');
+    const uptime = outputs.slice(start).join('').trim();
+    expect(uptime).toMatch(/^\d+\.\d{2}\s+\d+\.\d{2}$/);
+  });
 });

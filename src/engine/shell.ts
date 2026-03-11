@@ -817,6 +817,69 @@ export class Shell {
     this.remoteFs = null;
   }
 
+  private async executeParsedPipeline(
+    pipeline: ParsedPipeline,
+    outOverride: ((s: string) => void) | null,
+    rawOutOverride: ((s: string) => void) | null,
+  ): Promise<number> {
+    // Handle sudo password prompt for the first segment
+    for (const seg of pipeline.segments) {
+      seg.args = seg.args.map((a) => this.expandVariables(a));
+      if (seg.sudo && seg.cmd === '-k') {
+        this.sudoAuthUntil = 0;
+        continue;
+      }
+      if (seg.sudo && seg.cmd && this.fs.getCurrentUser() !== 'root') {
+        if (Date.now() > this.sudoAuthUntil) {
+          await this.onPasswordPrompt(`[sudo] password for ${this.fs.getCurrentUser()}: `);
+          // Mock: always accept the password
+          this.sudoAuthUntil = Date.now() + 5 * 60 * 1000;
+        }
+      }
+    }
+
+    // Execute the pipeline
+    let pipedInput: string | null = null;
+    let status = 0;
+
+    for (let i = 0; i < pipeline.segments.length; i++) {
+      const seg = pipeline.segments[i];
+      const isLast = i === pipeline.segments.length - 1;
+      const needCapture = !isLast || pipeline.redirectTarget !== null;
+
+      if (needCapture) {
+        // Capture output instead of printing to terminal
+        const captured: string[] = [];
+        const captureOut = (s: string) => { captured.push(s); };
+        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, captureOut, (s: string) => { captured.push(s); }, pipedInput);
+        pipedInput = captured.join('\n');
+      } else {
+        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, outOverride, rawOutOverride, pipedInput);
+      }
+    }
+
+    // Handle redirection: write captured output to file
+    if (pipeline.redirectTarget !== null && pipedInput !== null) {
+      const targetPath = this.fs.resolvePath(this.cwd, pipeline.redirectTarget);
+      const user = this.fs.getCurrentUser();
+      if (pipeline.redirectAppend) {
+        const existing = this.fs.readFile(targetPath, user) ?? '';
+        const ok = this.fs.writeFile(targetPath, existing + pipedInput + '\n', user, false);
+        if (!ok) {
+          this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
+          status = 1;
+        }
+      } else {
+        const ok = this.fs.writeFile(targetPath, pipedInput + '\n', user, false);
+        if (!ok) {
+          this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
+          status = 1;
+        }
+      }
+    }
+    return status;
+  }
+
   // ── Main execute entry point ──
 
   async execute(input: string): Promise<void> {
@@ -846,60 +909,7 @@ export class Shell {
       if (pipeline.segments.length === 0) return;
       this.spawnForegroundProcess(trimmed);
 
-      // Handle sudo password prompt for the first segment
-      for (const seg of pipeline.segments) {
-        seg.args = seg.args.map((a) => this.expandVariables(a));
-        if (seg.sudo && seg.cmd === '-k') {
-          this.sudoAuthUntil = 0;
-          continue;
-        }
-        if (seg.sudo && seg.cmd && this.fs.getCurrentUser() !== 'root') {
-          if (Date.now() > this.sudoAuthUntil) {
-            await this.onPasswordPrompt(`[sudo] password for ${this.fs.getCurrentUser()}: `);
-            // Mock: always accept the password
-            this.sudoAuthUntil = Date.now() + 5 * 60 * 1000;
-          }
-        }
-      }
-
-      // Execute the pipeline
-      let pipedInput: string | null = null;
-
-      for (let i = 0; i < pipeline.segments.length; i++) {
-        const seg = pipeline.segments[i];
-        const isLast = i === pipeline.segments.length - 1;
-        const needCapture = !isLast || pipeline.redirectTarget !== null;
-
-        if (needCapture) {
-          // Capture output instead of printing to terminal
-          const captured: string[] = [];
-          const captureOut = (s: string) => { captured.push(s); };
-          status = await this.runCommand(seg.cmd, seg.args, seg.sudo, captureOut, (s: string) => { captured.push(s); }, pipedInput);
-          pipedInput = captured.join('\n');
-        } else {
-          status = await this.runCommand(seg.cmd, seg.args, seg.sudo, null, null, pipedInput);
-        }
-      }
-
-      // Handle redirection: write captured output to file
-      if (pipeline.redirectTarget !== null && pipedInput !== null) {
-        const targetPath = this.fs.resolvePath(this.cwd, pipeline.redirectTarget);
-        const user = this.fs.getCurrentUser();
-        if (pipeline.redirectAppend) {
-          const existing = this.fs.readFile(targetPath, user) ?? '';
-          const ok = this.fs.writeFile(targetPath, existing + pipedInput + '\n', user, false);
-          if (!ok) {
-            this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
-            status = 1;
-          }
-        } else {
-          const ok = this.fs.writeFile(targetPath, pipedInput + '\n', user, false);
-          if (!ok) {
-            this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
-            status = 1;
-          }
-        }
-      }
+      status = await this.executeParsedPipeline(pipeline, null, null);
 
       // Kernel panic check (only for local FS)
       if (!this.sshSession && this.localFs.checkCriticalPathsMissing()) {
@@ -1003,6 +1013,71 @@ export class Shell {
     if (alias) {
       cmd = alias.cmd;
       args = [...alias.prependArgs, ...args];
+    }
+
+    if (cmd === 'sh' || cmd === 'bash') {
+      let scriptArg: string | null = null;
+      let xtrace = false;
+      let errexit = true;
+      for (const arg of args) {
+        if (arg.startsWith('__stdin__:')) continue;
+        if (arg === '-x') { xtrace = true; continue; }
+        if (arg === '-e') { errexit = true; continue; }
+        if (arg === '+e') { errexit = false; continue; }
+        if (!arg.startsWith('-') && scriptArg === null) {
+          scriptArg = arg;
+          continue;
+        }
+      }
+      if (!scriptArg) return 0;
+      const scriptPath = this.fs.resolvePath(this.cwd, scriptArg);
+      const node = this.fs.getNode(scriptPath);
+      if (!node || node.type !== 'file') {
+        const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+        termOut(`${cmd}: ${scriptArg}: No such file or directory`);
+        return 1;
+      }
+      const content = this.fs.readFile(scriptPath, this.fs.getCurrentUser());
+      if (content === null) {
+        const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+        termOut(`${cmd}: ${scriptArg}: Permission denied`);
+        return 1;
+      }
+
+      const lines = content.split('\n');
+      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const rawLine = lines[lineIdx];
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+        const lineNo = lineIdx + 1;
+        const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+
+        if (line === 'set -e') {
+          errexit = true;
+          if (xtrace) termOut('+ set -e');
+          continue;
+        }
+        if (line === 'set +e') {
+          errexit = false;
+          if (xtrace) termOut('+ set +e');
+          continue;
+        }
+
+        if (xtrace) termOut(`+ ${line}`);
+
+        const parsed = parsePipeline(line);
+        if (parsed.parseError) {
+          termOut(`${scriptArg}:${lineNo}: ${parsed.parseError}`);
+          return 2;
+        }
+        if (parsed.segments.length === 0) continue;
+        const status = await this.executeParsedPipeline(parsed, outOverride, rawOutOverride);
+        if (status !== 0) {
+          termOut(`${scriptArg}:${lineNo}: command exited with status ${status}`);
+          if (errexit) return status;
+        }
+      }
+      return 0;
     }
 
     // If piped input exists and the command expects file input (like grep without a file),

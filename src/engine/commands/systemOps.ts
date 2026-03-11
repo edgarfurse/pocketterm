@@ -145,6 +145,62 @@ SEE ALSO
        id(1), who(1)`,
 };
 
+const hostname_cmd: CommandDefinition = {
+  name: 'hostname',
+  async execute(_args, ctx) {
+    ctx.out(ctx.hostname);
+  },
+  man: `HOSTNAME(1)                  User Commands                HOSTNAME(1)
+
+NAME
+       hostname - show or set the system host name
+
+SYNOPSIS
+       hostname
+
+DESCRIPTION
+       Print the current host name. In this simulation, host identity follows
+       the active shell context and defaults to pocket-term.
+
+EXAMPLES
+       hostname
+
+SEE ALSO
+       uname(1), hostnamectl(1)`,
+};
+
+const hostnamectl_cmd: CommandDefinition = {
+  name: 'hostnamectl',
+  async execute(_args, ctx) {
+    ctx.out(` Static hostname: ${ctx.hostname}`);
+    ctx.out('       Icon name: computer-vm');
+    ctx.out('         Chassis: vm');
+    ctx.out('      Machine ID: 8a4f7f4e04f84f1ab7ef8f31b8d2f4c1');
+    ctx.out('         Boot ID: 0d1d2e3f4a5b6c7d8e9f001122334455');
+    ctx.out('  Operating System: Rocky Linux 9.4 (Blue Onyx)');
+    ctx.out('            Kernel: Linux 5.14.0-362.8.1.el9_3.x86_64');
+    ctx.out('      Architecture: x86-64');
+  },
+  man: `HOSTNAMECTL(1)               User Commands             HOSTNAMECTL(1)
+
+NAME
+       hostnamectl - control the system hostname
+
+SYNOPSIS
+       hostnamectl
+
+DESCRIPTION
+       hostnamectl queries and changes the system hostname and related
+       machine metadata. In this simulation, hostnamectl is read-only and
+       reports current host and operating-system identity.
+
+EXAMPLES
+       hostnamectl
+
+SEE ALSO
+       hostname(1), uname(1)`,
+};
+
 const which_cmd: CommandDefinition = {
   name: 'which',
   async execute(args, ctx) {
@@ -972,7 +1028,7 @@ SEE ALSO
 };
 
 export const systemOpsCommands: CommandDefinition[] = [
-  uname, whoami, which_cmd, command_builtin, type_builtin, tar, date_cmd, uptime_cmd, top, ps, kill_cmd, free_cmd, lscpu, lsblk, cal, df, history_cmd, clear, reset,
+  uname, whoami, hostname_cmd, hostnamectl_cmd, which_cmd, command_builtin, type_builtin, tar, date_cmd, uptime_cmd, top, ps, kill_cmd, free_cmd, lscpu, lsblk, cal, df, history_cmd, clear, reset,
 ];
 
 // ── Exported helpers for fastfetch and other consumers ──

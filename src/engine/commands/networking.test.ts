@@ -76,4 +76,30 @@ describe('curl command fidelity', () => {
     expect(h.getExitCode()).toBe(22);
     expect(h.outLines.join('\n')).toContain('curl: (22)');
   });
+
+  it('prints response body to stdout for simple GET', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => 'zen-message',
+      headers: new Headers(),
+    })));
+
+    const h = makeCurlCtx();
+    await curl.execute(['-s', 'https://api.github.com/zen'], h.ctx);
+    expect(h.getExitCode()).toBeNull();
+    expect(h.outLines.join('\n')).toContain('zen-message');
+  });
+
+  it('maps failed fetch to curl(7) connect error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }));
+
+    const h = makeCurlCtx();
+    await curl.execute(['https://offline.example'], h.ctx);
+    expect(h.getExitCode()).toBe(7);
+    expect(h.outLines.join('\n')).toContain('curl: (7) Failed to connect to offline.example');
+  });
 });

@@ -14,6 +14,7 @@ function makeCtx(installed: string[] = []): CommandContext {
 describe('system command resolution', () => {
   const whichCmd = systemOpsCommands.find((c) => c.name === 'which')!;
   const commandBuiltin = systemOpsCommands.find((c) => c.name === 'command')!;
+  const hostnamectlCmd = systemOpsCommands.find((c) => c.name === 'hostnamectl')!;
 
   it('returns /usr/bin/git for which after package install', async () => {
     const ctx = makeCtx(['git']);
@@ -30,5 +31,15 @@ describe('system command resolution', () => {
     await commandBuiltin.execute(['-v', 'git'], ctx);
 
     expect(ctx.setExitCode).toHaveBeenCalledWith(1);
+  });
+
+  it('includes rocky identity in hostnamectl output', async () => {
+    const ctx = makeCtx();
+    ctx.hostname = 'pocket-term';
+
+    await hostnamectlCmd.execute([], ctx);
+
+    expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('Static hostname: pocket-term'));
+    expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('Rocky Linux 9.4'));
   });
 });

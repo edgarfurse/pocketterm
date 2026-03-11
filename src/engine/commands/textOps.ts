@@ -30,6 +30,13 @@ const cat: CommandDefinition = {
       return;
     }
     for (const file of files) {
+      const resolved = ctx.fs.resolvePath(ctx.cwd, file);
+      if (resolved === '/proc/uptime') {
+        const uptimeSeconds = Math.max(0, (Date.now() - ctx.bootTime) / 1000);
+        const idleSeconds = uptimeSeconds * 3.7;
+        ctx.out(`${uptimeSeconds.toFixed(2)} ${idleSeconds.toFixed(2)}`);
+        continue;
+      }
       const content = readFileChecked(ctx, file, 'cat');
       if (content !== null) ctx.out(content);
     }

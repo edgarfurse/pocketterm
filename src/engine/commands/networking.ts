@@ -207,10 +207,18 @@ const curl: CommandDefinition = {
 
     try {
       const started = Date.now();
-      const response = await fetch(parsed.toString(), {
-        method: headOnly ? 'HEAD' : 'GET',
-        redirect: followRedirects ? 'follow' : 'manual',
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      let response: Response;
+      try {
+        response = await fetch(parsed.toString(), {
+          method: headOnly ? 'HEAD' : 'GET',
+          redirect: followRedirects ? 'follow' : 'manual',
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!followRedirects && response.status >= 300 && response.status < 400) {
         ctx.out('curl: (47) Maximum (0) redirects followed');
         ctx.setExitCode(47);
@@ -256,7 +264,18 @@ const curl: CommandDefinition = {
       }
 
       for (const line of text.split('\n')) ctx.out(line);
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        ctx.out('curl: (28) Operation timed out after 8000 milliseconds');
+        ctx.setExitCode(28);
+        return;
+      }
+      const message = err instanceof Error ? err.message : '';
+      if (/failed to fetch|networkerror/i.test(message)) {
+        ctx.out(`curl: (7) Failed to connect to ${parsed.hostname}`);
+        ctx.setExitCode(7);
+        return;
+      }
       ctx.out(`curl: (6) Could not resolve host: ${parsed.hostname}`);
       ctx.setExitCode(6);
     }

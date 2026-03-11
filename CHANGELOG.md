@@ -3,6 +3,20 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.10.2 - 2026-03-10
+
+### Added
+
+- Added `hostnamectl` command output for host/OS introspection parity in system-diagnostics workflows
+- Added script execution ergonomics for `sh`/`bash` with `-x` tracing and in-script `set -e` / `set +e` behavior controls
+
+### Changed
+
+- Improved script diagnostics by emitting file-and-line-scoped failure messages when script commands fail
+- Hardened `curl` transport error mapping with realistic timeout (`(28)`) and connect-failure (`(7)`) reporting
+- Updated `cat /proc/uptime` to return dynamic values derived from shell boot time for better observability fidelity
+- Expanded test coverage for script tracing/errexit behavior, `/proc/uptime`, `hostnamectl`, and curl network failures
+
 ## 0.10.1 - 2026-03-10
 
 ### Changed
