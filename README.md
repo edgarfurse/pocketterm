@@ -83,5 +83,14 @@ sudo reboot
 - Networking is simulated and does not expose real host sockets/devices
 
 ## License
-
 MIT
+
+### Support & Connect
+
+*If you find this project useful for learning or just enjoy the nostalgia, feel free to connect or support the development!*
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/edgar.ai.dev)
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/edgar-furse-7643b3ba/)
+
+
