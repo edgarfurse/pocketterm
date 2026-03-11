@@ -37,6 +37,9 @@ It is designed for educational sandboxing, sysadmin training, and realistic oper
 
 ## 🧪 Demo Commands
 
+<details>
+<summary>Show command cookbook</summary>
+
 ### Core shell
 
 ```bash
@@ -92,6 +95,8 @@ Notes:
 - `cd /////etc//..//../usr/bin.` treats `bin.` as a literal directory name and returns "No such file or directory" unless `/usr/bin.` exists.
 - `cd /etc/../..//usr/bin/.` resolves to `/usr/bin` as expected.
 - `echo "cat /proc/cpuinfo" > script.sh && sh script.sh` prints the simulated CPU info content.
+
+</details>
 
 ---
 
