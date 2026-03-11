@@ -3,12 +3,60 @@ import { sleep } from './types';
 import { FileSystem } from '../fileSystem';
 import { DEFAULT_TUTORIALS, type TutorialCartridge } from '../tutorials';
 import { exportSystemState, importSystemState } from '../storage';
+import { getManPage } from '../manPages';
+
+const POCKETTERM_MAN_PAGE = `POCKETTERM(1)                User Commands                POCKETTERM(1)
+
+NAME
+       pocketterm - The PocketTerm Environment Manager
+
+SYNOPSIS
+       pocketterm
+
+DESCRIPTION
+       pocketterm is the primary control utility for the PocketTerm runtime.
+       It manages a virtualized execution environment that provides a persistent
+       Filesystem Hierarchy Standard (FHS) layout and an AST-based command
+       interpreter for interactive shell operations.
+
+INTERACTIVE MODE
+       Invoking pocketterm launches a text user interface (TUI) used for
+       environment control tasks. The interface provides diagnostic review
+       surfaces and onboarding workflows for new users entering the shell.
+
+PERSISTENCE
+       File modifications and package state maintained through dnf are committed
+       to non-volatile local storage. Persisted state remains available across
+       power cycles initiated through reboot.
+
+ENVIRONMENT
+       Default user context initializes at /home/guest. Command resolution
+       follows the standard executable search path rooted at /usr/bin.
+
+SEE ALSO
+       man(1), dnf(8), reboot(8), bash(1)`;
 
 const man: CommandDefinition = {
   name: 'man',
   async execute(args, ctx) {
-    const topic = args[0]?.toLowerCase();
+    if (args.length === 0) { ctx.out('What manual page do you want?'); return; }
+
+    let topicArg = args[0] ?? '';
+    if (/^\d+$/.test(topicArg)) {
+      topicArg = args[1] ?? '';
+    }
+    const topic = topicArg.toLowerCase();
     if (!topic) { ctx.out('What manual page do you want?'); return; }
+
+    const fsManPath = `/usr/share/man/man1/${topic}.1`;
+    const fsManPage = ctx.fs.readFile(fsManPath, ctx.sudo ? 'root' : ctx.user) ?? ctx.fs.readFile(fsManPath, 'root');
+    if (fsManPage !== null) {
+      for (const line of fsManPage.split('\n')) {
+        ctx.out(line);
+      }
+      return;
+    }
+
     const cmd = ctx.registry.get(topic);
     if (cmd && cmd.man) {
       if (cmd.requiresPackage && !ctx.installedPackages.has(cmd.requiresPackage)) {
@@ -18,9 +66,18 @@ const man: CommandDefinition = {
       for (const line of cmd.man.split('\n')) {
         ctx.out(line);
       }
-    } else {
-      ctx.out(`No manual entry for ${args[0]}`);
+      return;
     }
+
+    const fallbackPage = getManPage(topic);
+    if (fallbackPage) {
+      for (const line of fallbackPage.split('\n')) {
+        ctx.out(line);
+      }
+      return;
+    }
+
+    ctx.out(`No manual entry for ${topicArg}`);
   },
   man: `MAN(1)                   Manual pager utils              MAN(1)
 
@@ -64,7 +121,7 @@ const help: CommandDefinition = {
     ctx.out('');
     ctx.out('Aliases: ll (ls -l), la (ls -la), . (source)');
     ctx.out('Shortcuts: Ctrl+C (kill), Ctrl+L (clear), Ctrl+A/E (line nav), Ctrl+Z (stop)');
-    ctx.out('Type "man <command>" for detailed help on any command.');
+    ctx.out("Use 'man pocketterm' for system documentation or run 'pocketterm' to launch the interactive environment manager.");
   },
   man: `HELP(1)                  Builtin Commands                HELP(1)
 
@@ -860,28 +917,7 @@ const pocketterm: CommandDefinition = {
       }
     }
   },
-  man: `POCKETTERM(1)                User Commands                POCKETTERM(1)
-
-NAME
-       pocketterm - open PocketTerm settings and tutorial interface
-
-SYNOPSIS
-       pocketterm
-
-DESCRIPTION
-       Launches an ncurses-style configuration and training interface inside
-       the terminal. Use arrow keys to navigate and Enter to select.
-
-       Tutorial selections print MOTD plus guided tasks for core Linux skills.
-       Reset action clears local persistent state and reloads the app.
-
-KEYS
-       Up/Down arrows  Move selection
-       Enter           Activate selected item
-       q               Exit menu
-
-SEE ALSO
-       man(1), nmtui(1), reboot(8)`,
+  man: POCKETTERM_MAN_PAGE,
 };
 
 const reboot: CommandDefinition = {

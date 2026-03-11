@@ -51,3 +51,20 @@ describe('editor command routing', () => {
     expect(h.calls.nano).toBe(0);
   });
 });
+
+describe('help onboarding hook', () => {
+  const helpCmd = miscCommands.find((c) => c.name === 'help')!;
+
+  it('prints pocketterm documentation guidance', async () => {
+    const out = vi.fn();
+    const stubCommand = { name: 'stub', execute: async () => {}, man: '' };
+    const ctx = {
+      registry: new Map([['help', helpCmd], ['man', stubCommand], ['pocketterm', stubCommand]]),
+      out,
+    } as unknown as CommandContext;
+
+    await helpCmd.execute([], ctx);
+
+    expect(out).toHaveBeenCalledWith("Use 'man pocketterm' for system documentation or run 'pocketterm' to launch the interactive environment manager.");
+  });
+});

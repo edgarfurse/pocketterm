@@ -1,4 +1,4 @@
-import type { CommandDefinition } from './types';
+import type { CommandContext, CommandDefinition } from './types';
 
 // ── Shared dynamic helpers ──
 
@@ -59,6 +59,15 @@ function fmtKB(kb: number): string {
   if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)}Gi`;
   if (kb >= 1024)         return `${(kb / 1024).toFixed(0)}Mi`;
   return `${kb}Ki`;
+}
+
+function resolveCommandPath(commandName: string, ctx: CommandContext): string | null {
+  const aliases: Record<string, string> = { ll: 'ls', la: 'ls', '.': 'source', vi: 'vim' };
+  const resolved = aliases[commandName] ?? commandName;
+  const def = ctx.registry.get(resolved);
+  if (!def) return null;
+  if (def.requiresPackage && !ctx.installedPackages.has(def.requiresPackage)) return null;
+  return `/usr/bin/${resolved}`;
 }
 
 // ── Commands ──
@@ -140,23 +149,9 @@ const which_cmd: CommandDefinition = {
       ctx.out('which: no command in ($PATH)');
       return;
     }
-    const aliases: Record<string, string> = { ll: 'ls', la: 'ls', '.': 'source', vi: 'vim' };
-    const resolved = aliases[cmd] ?? cmd;
-    const def = ctx.registry.get(resolved);
-    if (def && (!def.requiresPackage || ctx.installedPackages.has(def.requiresPackage))) {
-      ctx.out(`/usr/bin/${resolved}`);
-    } else if (aliases[cmd] && ctx.registry.has(aliases[cmd])) {
-      // Alias exists but target may be package-locked.
-      const aliasTarget = aliases[cmd];
-      const aliasDef = ctx.registry.get(aliasTarget);
-      if (aliasDef && (!aliasDef.requiresPackage || ctx.installedPackages.has(aliasDef.requiresPackage))) {
-        ctx.out(`${cmd}: aliased to ${aliasTarget}`);
-      } else {
-        ctx.out(`${cmd} not found`);
-      }
-    } else {
-      ctx.out(`${cmd} not found`);
-    }
+    const path = resolveCommandPath(cmd, ctx);
+    if (!path) { ctx.out(`${cmd} not found`); return; }
+    ctx.out(path);
   },
   man: `WHICH(1)                     User Commands                    WHICH(1)
 
@@ -177,6 +172,57 @@ EXAMPLES
 
 SEE ALSO
        whereis(1), type(1)`,
+};
+
+const command_builtin: CommandDefinition = {
+  name: 'command',
+  async execute(args, ctx) {
+    if (args[0] !== '-v') {
+      ctx.out('usage: command -v name [name ...]');
+      ctx.setExitCode(2);
+      return;
+    }
+    const names = args.slice(1);
+    if (names.length === 0) {
+      ctx.out('command: usage: command -v name [name ...]');
+      ctx.setExitCode(2);
+      return;
+    }
+
+    let allFound = true;
+    for (const name of names) {
+      const path = resolveCommandPath(name, ctx);
+      if (path) {
+        ctx.out(path);
+      } else {
+        allFound = false;
+      }
+    }
+    if (!allFound) ctx.setExitCode(1);
+  },
+  man: `COMMAND(1)                   Builtin Commands               COMMAND(1)
+
+NAME
+       command - run a command with aliases disabled
+
+SYNOPSIS
+       command -v name [name ...]
+
+DESCRIPTION
+       command is a shell builtin used to resolve command names and bypass
+       shell functions or aliases. In this simulation, command -v reports
+       command lookup paths in a Rocky Linux style layout.
+
+OPTIONS
+       -v     Print a path for each found command.
+
+EXAMPLES
+       command -v ls
+       command -v git
+       command -v dnf
+
+SEE ALSO
+       which(1), type(1), bash(1)`,
 };
 
 const tar: CommandDefinition = {
@@ -869,7 +915,7 @@ SEE ALSO
 };
 
 export const systemOpsCommands: CommandDefinition[] = [
-  uname, whoami, which_cmd, tar, date_cmd, uptime_cmd, top, ps, kill_cmd, free_cmd, lscpu, lsblk, cal, df, history_cmd, clear, reset,
+  uname, whoami, which_cmd, command_builtin, tar, date_cmd, uptime_cmd, top, ps, kill_cmd, free_cmd, lscpu, lsblk, cal, df, history_cmd, clear, reset,
 ];
 
 // ── Exported helpers for fastfetch and other consumers ──

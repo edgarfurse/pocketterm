@@ -3,6 +3,20 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.10.0 - 2026-03-10
+
+### Added
+
+- FHS-aligned manpage persistence for `pocketterm` at `/usr/share/man/man1/pocketterm.1` with lookup support in `man`
+- New command-resolution parity coverage (`which` + `command -v`) and end-to-end install-path integration tests for `dnf install git`
+- Expanded manual coverage for `bash` and `sh`, including section-aware `man 1 <topic>` handling
+
+### Changed
+
+- Strengthened VFS baseline seeding and migration repair for core hierarchy paths (`/usr`, `/var`, `/home`, `/tmp`) and deep `/usr` layout
+- Hardened system-path protection to prevent accidental deletion of critical directories in non-admin flows
+- Updated `help` onboarding guidance to direct users to `man pocketterm` and the interactive environment manager
+
 ## 0.9.2 - 2026-03-10
 
 ### Added

@@ -2,6 +2,20 @@ import type { VFSNode, SerializedVFSNode } from './types';
 import { safePersist } from './storage';
 
 const VFS_STORAGE_KEY = 'pocketterm-vfs';
+const PROTECTED_SYSTEM_PATHS = [
+  '/bin',
+  '/boot',
+  '/dev',
+  '/etc',
+  '/lib',
+  '/lib64',
+  '/proc',
+  '/root',
+  '/sbin',
+  '/sys',
+  '/usr',
+  '/var',
+];
 
 function createNode(
   name: string,
@@ -163,6 +177,15 @@ function getDefaultRoot(): VFSNode {
       'daemon:x:2:',
       'wheel:x:10:guest',
       'guest:x:1000:',
+    ].join('\n') + '\n', 'root', 'root', '644')
+  );
+  etc.children!.set(
+    'shells',
+    n('shells', [
+      '/bin/sh',
+      '/bin/bash',
+      '/usr/bin/sh',
+      '/usr/bin/bash',
     ].join('\n') + '\n', 'root', 'root', '644')
   );
   etc.children!.set(
@@ -381,8 +404,49 @@ function getDefaultRoot(): VFSNode {
   usr.children!.set('lib', usrLib);
   const usrLib64 = d('lib64', 'root', 'root', '755');
   usr.children!.set('lib64', usrLib64);
+  const usrLocal = d('local', 'root', 'root', '755');
+  usrLocal.children!.set('bin', d('bin', 'root', 'root', '755'));
+  usr.children!.set('local', usrLocal);
   const usrShare = d('share', 'root', 'root', '755');
   const usrShareMan = d('man', 'root', 'root', '755');
+  const man1Dir = d('man1', 'root', 'root', '755');
+  man1Dir.children!.set(
+    'pocketterm.1',
+    n('pocketterm.1', [
+      'POCKETTERM(1)                User Commands                POCKETTERM(1)',
+      '',
+      'NAME',
+      '       pocketterm - The PocketTerm Environment Manager',
+      '',
+      'SYNOPSIS',
+      '       pocketterm',
+      '',
+      'DESCRIPTION',
+      '       pocketterm is the primary control utility for the PocketTerm runtime.',
+      '       It manages a virtualized execution environment that provides a persistent',
+      '       Filesystem Hierarchy Standard (FHS) layout and an AST-based command',
+      '       interpreter for interactive shell operations.',
+      '',
+      'INTERACTIVE MODE',
+      '       Invoking pocketterm launches a text user interface (TUI) used for',
+      '       environment control tasks. The interface provides diagnostic review',
+      '       surfaces and onboarding workflows for new users entering the shell.',
+      '',
+      'PERSISTENCE',
+      '       File modifications and package state maintained through dnf are committed',
+      '       to non-volatile local storage. Persisted state remains available across',
+      '       power cycles initiated through reboot.',
+      '',
+      'ENVIRONMENT',
+      '       Default user context initializes at /home/guest. Command resolution',
+      '       follows the standard executable search path rooted at /usr/bin.',
+      '',
+      'SEE ALSO',
+      '       man(1), dnf(8), reboot(8), bash(1)',
+      '',
+    ].join('\n'), 'root', 'root', '644')
+  );
+  usrShareMan.children!.set('man1', man1Dir);
   usrShare.children!.set('man', usrShareMan);
   const usrShareDoc = d('doc', 'root', 'root', '755');
   usrShare.children!.set('doc', usrShareDoc);
@@ -523,11 +587,109 @@ function serializableToNode(s: SerializedVFSNode): VFSNode {
 }
 
 /** Critical system paths that must exist for the kernel to function. */
-const CRITICAL_PATHS = ['/bin', '/etc', '/boot'];
+const CRITICAL_PATHS = ['/bin', '/boot', '/etc', '/usr', '/var', '/home', '/tmp'];
 
 export class FileSystem {
   private root: VFSNode;
   private currentUser: string;
+
+  private ensureDirectory(path: string, owner: string, group: string, perms: string): void {
+    const normalized = normalizePath(path);
+    if (normalized === '/') return;
+    const parts = normalized.split('/').filter(Boolean);
+    let cursor = this.root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!cursor.children) cursor.children = new Map();
+      let child = cursor.children.get(part);
+      if (!child) {
+        const isLeaf = i === parts.length - 1;
+        child = d(part, isLeaf ? owner : 'root', isLeaf ? group : 'root', isLeaf ? perms : '755');
+        cursor.children.set(part, child);
+      }
+      if (child.type !== 'directory') return;
+      cursor = child;
+    }
+  }
+
+  private ensureFile(path: string, content: string, owner: string, group: string, perms: string): void {
+    const normalized = normalizePath(path);
+    const info = this.getParent(normalized);
+    if (!info) return;
+    const { parent, name } = info;
+    if (parent.type !== 'directory') return;
+    if (!parent.children) parent.children = new Map();
+    if (!parent.children.has(name)) {
+      parent.children.set(name, n(name, content, owner, group, perms));
+    }
+  }
+
+  private ensureBaselineStructure(): void {
+    // Top-level FHS directories expected in Rocky-like environments.
+    for (const path of [
+      '/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/media', '/mnt',
+      '/opt', '/proc', '/root', '/run', '/sbin', '/srv', '/sys', '/tmp', '/usr', '/var',
+    ]) {
+      this.ensureDirectory(path, 'root', 'root', path === '/tmp' ? '1777' : '755');
+    }
+
+    // Required deep hierarchy used by command lookup and manual pages.
+    for (const path of [
+      '/usr/bin',
+      '/usr/lib',
+      '/usr/lib64',
+      '/usr/local',
+      '/usr/local/bin',
+      '/usr/share',
+      '/usr/share/man',
+      '/usr/share/man/man1',
+      '/var/log',
+      '/home/guest',
+    ]) {
+      const owner = path === '/home/guest' ? 'guest' : 'root';
+      const group = path === '/home/guest' ? 'guest' : 'root';
+      const perms = path === '/home/guest' ? '755' : '755';
+      this.ensureDirectory(path, owner, group, perms);
+    }
+
+    this.ensureFile('/etc/shells', '/bin/sh\n/bin/bash\n/usr/bin/sh\n/usr/bin/bash\n', 'root', 'root', '644');
+    this.ensureFile('/var/log/messages', '', 'root', 'root', '640');
+    this.ensureFile('/var/log/secure', '', 'root', 'root', '600');
+    this.ensureFile('/var/log/dnf.log', '', 'root', 'root', '644');
+    this.ensureFile('/usr/share/man/man1/pocketterm.1', [
+      'POCKETTERM(1)                User Commands                POCKETTERM(1)',
+      '',
+      'NAME',
+      '       pocketterm - The PocketTerm Environment Manager',
+      '',
+      'SYNOPSIS',
+      '       pocketterm',
+      '',
+      'DESCRIPTION',
+      '       pocketterm is the primary control utility for the PocketTerm runtime.',
+      '       It manages a virtualized execution environment that provides a persistent',
+      '       Filesystem Hierarchy Standard (FHS) layout and an AST-based command',
+      '       interpreter for interactive shell operations.',
+      '',
+      'INTERACTIVE MODE',
+      '       Invoking pocketterm launches a text user interface (TUI) used for',
+      '       environment control tasks. The interface provides diagnostic review',
+      '       surfaces and onboarding workflows for new users entering the shell.',
+      '',
+      'PERSISTENCE',
+      '       File modifications and package state maintained through dnf are committed',
+      '       to non-volatile local storage. Persisted state remains available across',
+      '       power cycles initiated through reboot.',
+      '',
+      'ENVIRONMENT',
+      '       Default user context initializes at /home/guest. Command resolution',
+      '       follows the standard executable search path rooted at /usr/bin.',
+      '',
+      'SEE ALSO',
+      '       man(1), dnf(8), reboot(8), bash(1)',
+      '',
+    ].join('\n'), 'root', 'root', '644');
+  }
 
   private ensureBaselineFiles(): void {
     const etc = this.getNode('/etc');
@@ -559,7 +721,9 @@ export class FileSystem {
     } else {
       this.root = getDefaultRoot();
     }
+    this.ensureBaselineStructure();
     this.ensureBaselineFiles();
+    this.persist();
   }
 
   private _lastPersistError: string | null = null;
@@ -698,6 +862,11 @@ export class FileSystem {
   }
 
   remove(path: string, user: string, sudo: boolean, recursive: boolean): boolean {
+    const normalized = normalizePath(path);
+    if (PROTECTED_SYSTEM_PATHS.some((p) => normalized === p || normalized.startsWith(`${p}/`))) {
+      return false;
+    }
+
     const info = this.getParent(path);
     if (!info) return false;
     const { parent, name } = info;

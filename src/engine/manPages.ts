@@ -4,6 +4,75 @@
  */
 
 export const MAN_PAGES: Record<string, string> = {
+  bash: `BASH(1)                    General Commands Manual          BASH(1)
+
+NAME
+       bash - GNU Bourne-Again SHell
+
+SYNOPSIS
+       bash [options] [command_string | file]
+
+DESCRIPTION
+       bash is a command language interpreter that executes commands read from
+       standard input or from a file. It is the default interactive shell in
+       Rocky Linux environments and provides job control, command history,
+       aliases, and shell scripting support.
+
+OPTIONS
+       -c string
+              Read commands from string.
+
+       -l     Act as if invoked as a login shell.
+
+       -i     Start an interactive shell session.
+
+EXAMPLES
+       bash
+              Start a new interactive shell.
+
+       bash -c "echo hello"
+              Execute a single command string.
+
+POCKETTERM NOTES
+       PocketTerm simulates bash-style prompt behavior, command history, and
+       builtins commonly used for Linux learning workflows.
+
+SEE ALSO
+       sh(1), man(1), cd(1), export(1)`,
+
+  sh: `SH(1)                      General Commands Manual            SH(1)
+
+NAME
+       sh - command language interpreter
+
+SYNOPSIS
+       sh [options] [file]
+
+DESCRIPTION
+       sh is the historical POSIX shell interface. On modern Rocky Linux
+       systems, /bin/sh is typically provided by bash in POSIX-compatible mode.
+       It is commonly used by scripts that require portable shell behavior.
+
+OPTIONS
+       -c string
+              Read commands from string.
+
+       -s     Read commands from standard input.
+
+EXAMPLES
+       sh script.sh
+              Execute script.sh using sh semantics.
+
+       sh -c "pwd"
+              Execute a single command in shell mode.
+
+POCKETTERM NOTES
+       PocketTerm exposes sh-style usage through the simulated shell stack and
+       keeps behavior close to beginner-friendly Rocky Linux workflows.
+
+SEE ALSO
+       bash(1), man(1)`,
+
   ls: `LS(1)                    User Commands                    LS(1)
 
 NAME
