@@ -15,6 +15,11 @@ function makeCurlCtx(overrides: Partial<CommandContext> = {}): {
   const ctx: CommandContext = {
     fs: {
       resolvePath: (_cwd: string, p: string) => p,
+      readFile: (path: string) => {
+        if (path === '/etc/hosts') return '127.0.0.1 localhost\n';
+        if (path === '/etc/resolv.conf') return 'nameserver 8.8.8.8\n';
+        return null;
+      },
       writeFile: (path: string, content: string) => {
         fsWrites.push({ path, content });
         return true;
@@ -25,6 +30,15 @@ function makeCurlCtx(overrides: Partial<CommandContext> = {}): {
     sudo: false,
     out: (s: string) => outLines.push(s),
     setExitCode: (n: number) => { exitCode = n; },
+    network: {
+      recordTransfer: () => {},
+      getSourceIP: () => '192.168.1.100',
+      getGateway: () => '192.168.1.1',
+      getSubnet: () => '192.168.1.0/24',
+      getDns: () => ['8.8.8.8', '8.8.4.4'],
+      canReach: () => true,
+      probeHead: async () => ({ ok: true, rttMs: 1.23 }),
+    },
     ...overrides,
   } as unknown as CommandContext;
 
@@ -33,6 +47,7 @@ function makeCurlCtx(overrides: Partial<CommandContext> = {}): {
 
 describe('curl command fidelity', () => {
   const curl = networkingCommands.find((c) => c.name === 'curl')!;
+  const ping = networkingCommands.find((c) => c.name === 'ping')!;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -101,5 +116,49 @@ describe('curl command fidelity', () => {
     await curl.execute(['https://offline.example'], h.ctx);
     expect(h.getExitCode()).toBe(7);
     expect(h.outLines.join('\n')).toContain('curl: (7) Failed to connect to offline.example');
+  });
+
+  it('resolves hosts entries before dns fallback for ping', async () => {
+    const h = makeCurlCtx({
+      fs: {
+        resolvePath: (_cwd: string, p: string) => p,
+        readFile: (path: string) => {
+          if (path === '/etc/hosts') return '127.0.0.1 localhost\n10.0.0.50 intranet.local\n';
+          if (path === '/etc/resolv.conf') return 'nameserver 1.1.1.1\n';
+          return null;
+        },
+        writeFile: () => true,
+      } as unknown as CommandContext['fs'],
+      network: {
+        ...(({} as unknown) as CommandContext['network']),
+        canReach: (target: string) => target === '10.0.0.50',
+        probeHead: async () => ({ ok: true, rttMs: 3.2 }),
+        getGateway: () => '192.168.1.1',
+        recordTransfer: () => {},
+        getSourceIP: () => '192.168.1.100',
+        getSubnet: () => '192.168.1.0/24',
+        getDns: () => ['8.8.8.8'],
+      } as unknown as CommandContext['network'],
+    });
+    await ping.execute(['-c', '1', 'intranet.local'], h.ctx);
+    expect(h.outLines.join('\n')).toContain('PING 10.0.0.50');
+    expect(h.getExitCode()).toBeNull();
+  });
+
+  it('returns resolver error when host cannot be resolved', async () => {
+    const h = makeCurlCtx({
+      fs: {
+        resolvePath: (_cwd: string, p: string) => p,
+        readFile: (path: string) => {
+          if (path === '/etc/hosts') return '127.0.0.1 localhost\n';
+          if (path === '/etc/resolv.conf') return 'nameserver 8.8.8.8\n';
+          return null;
+        },
+        writeFile: () => true,
+      } as unknown as CommandContext['fs'],
+    });
+    await curl.execute(['http://invalid-host'], h.ctx);
+    expect(h.getExitCode()).toBe(6);
+    expect(h.outLines.join('\n')).toContain('Could not resolve host');
   });
 });

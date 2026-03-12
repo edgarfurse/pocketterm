@@ -30,7 +30,7 @@ It is designed for educational sandboxing, sysadmin training, and realistic oper
 * **Boot Lifecycle:** Complete simulation from BIOS/GRUB through kernel boot to the login prompt.
 * **Interactive Tools:** Full-featured `top`, `htop`, `less`, `tail -f`, and `journalctl -xe`.
 * **Authentic Documentation:** Integrated `man` subsystem with high-fidelity manual pages (try `man pocketterm`).
-* **Networking:** Browser-backed `curl` with realistic error families and redirect behavior.
+* **Networking:** Browser-backed `curl`, proxy-style `ping`, dynamic `/proc/net/dev`, and boot-seeded `ifcfg-eth0`.
 * **Observability:** Includes `hostnamectl` and dynamic `cat /proc/uptime`.
 
 ---
@@ -116,7 +116,7 @@ Notes:
 
 ---
 
-## Fidelity Notes (0.10.2)
+## Fidelity Notes (0.11.1)
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
@@ -125,6 +125,12 @@ Notes:
 - Exported environment variables persist across shell recreation.
 - `/root` permission surfaces use bash-style "Permission denied" wording.
 - `cat /proc/uptime` is dynamic; `/proc/cpuinfo` and `/proc/meminfo` are deterministic simulation seeds.
+- `/proc/net/dev` now tracks simulated RX/TX counters and increments on browser-backed network probes (`curl`, `ping`).
+- `ping` uses fetch-based HEAD probes with timeout handling and RTT measurement for browser-safe realism.
+- `/etc/sysconfig/network-scripts/ifcfg-eth0` is generated at boot and aligned with the active simulated interface address.
+- Stderr-aware redirection now supports `2>`, `2>>`, `2>&1`, and `|&` with bash-like left-to-right intent.
+- Exit-code behavior is hardened for common shell fidelity paths (`127` not found, `2` misuse, `130` interrupt).
+- `ping` and `curl` follow a shared resolver contract: literal IP -> `/etc/hosts` -> DNS fallback.
 
 ### Intentional Simulator Contracts
 

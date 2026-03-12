@@ -1,10 +1,65 @@
 import type { CommandDefinition } from './types';
 import { sleep } from './types';
 
+function isIpv4Literal(value: string): boolean {
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((p) => {
+    const n = Number(p);
+    return Number.isInteger(n) && n >= 0 && n <= 255;
+  });
+}
+
+function readHostsMap(raw: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const line of raw.split('\n')) {
+    const clean = line.replace(/#.*/, '').trim();
+    if (!clean) continue;
+    const cols = clean.split(/\s+/).filter(Boolean);
+    if (cols.length < 2) continue;
+    const ip = cols[0];
+    for (let i = 1; i < cols.length; i++) out.set(cols[i].toLowerCase(), ip);
+  }
+  return out;
+}
+
+function resolveNetworkTarget(
+  input: string,
+  ctx: Parameters<CommandDefinition['execute']>[1],
+): { kind: 'ok'; canonicalHost: string; resolved: string } | { kind: 'error'; host: string } {
+  const target = input.trim().toLowerCase();
+  if (!target) return { kind: 'error', host: input };
+  if (target === 'localhost') return { kind: 'ok', canonicalHost: target, resolved: '127.0.0.1' };
+  if (isIpv4Literal(target)) return { kind: 'ok', canonicalHost: target, resolved: target };
+
+  const hostsRaw = ctx.fs.readFile('/etc/hosts', ctx.user) ?? '';
+  const hosts = readHostsMap(hostsRaw);
+  const fromHosts = hosts.get(target);
+  if (fromHosts) return { kind: 'ok', canonicalHost: target, resolved: fromHosts };
+
+  const dnsServers = (ctx.fs.readFile('/etc/resolv.conf', ctx.user) ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('nameserver '))
+    .map((line) => line.replace(/^nameserver\s+/, '').trim())
+    .filter(Boolean);
+
+  if (dnsServers.length === 0) return { kind: 'error', host: target };
+
+  // Browser-safe deterministic fallback: real DNS queries are not available in this sandbox.
+  if (/^[a-z0-9.-]+$/.test(target) && target.includes('.')) {
+    return { kind: 'ok', canonicalHost: target, resolved: target };
+  }
+  return { kind: 'error', host: target };
+}
+
 const ip: CommandDefinition = {
   name: 'ip',
   async execute(args, ctx) {
     const sub = args[0]?.toLowerCase();
+    const sourceIp = ctx.network.getSourceIP();
+    const gateway = ctx.network.getGateway();
+    const subnetPrefix = parseInt(ctx.network.getSubnet().split('/')[1] ?? '24', 10);
     if (sub === 'a' || sub === 'addr' || sub === 'address') {
       ctx.out('1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000');
       ctx.out('    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00');
@@ -14,13 +69,13 @@ const ip: CommandDefinition = {
       ctx.out('       valid_lft forever preferred_lft forever');
       ctx.out('2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000');
       ctx.out('    link/ether 52:54:00:12:34:56 brd ff:ff:ff:ff:ff:ff');
-      ctx.out('    inet 192.168.1.100/24 brd 192.168.1.255 scope global noprefixroute eth0');
+      ctx.out(`    inet ${sourceIp}/${subnetPrefix} brd 192.168.1.255 scope global noprefixroute eth0`);
       ctx.out('       valid_lft forever preferred_lft forever');
       ctx.out('    inet6 fe80::5054:ff:fe12:3456/64 scope link');
       ctx.out('       valid_lft forever preferred_lft forever');
     } else if (sub === 'r' || sub === 'route') {
-      ctx.out('default via 192.168.1.1 dev eth0 proto static metric 100');
-      ctx.out('192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100 metric 100');
+      ctx.out(`default via ${gateway} dev eth0 proto static metric 100`);
+      ctx.out(`192.168.1.0/24 dev eth0 proto kernel scope link src ${sourceIp} metric 100`);
     } else {
       ctx.out('usage: ip [ OPTIONS ] OBJECT { COMMAND | help }');
       ctx.out('       ip addr  - protocol address management');
@@ -56,20 +111,73 @@ SEE ALSO
 const ping: CommandDefinition = {
   name: 'ping',
   async execute(args, ctx) {
-    const target = args[0];
-    if (!target) { ctx.out('ping: missing host'); return; }
-    const resolved = target === 'localhost' ? '127.0.0.1' : target;
-    const reachable = ctx.network.canReach(resolved);
-    if (!reachable) { ctx.out(`ping: ${target}: Network is unreachable`); return; }
-    ctx.out(`PING ${resolved} (${resolved}) 56(84) bytes of data.`);
-    for (let i = 1; i <= 4; i++) {
-      await sleep(1000);
-      const time = (Math.random() * 0.5 + 0.05).toFixed(3);
-      ctx.out(`64 bytes from ${resolved}: icmp_seq=${i} ttl=64 time=${time} ms`);
+    let count = 4;
+    let timeoutSeconds = 2;
+    const nonFlags: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a === '-c' && args[i + 1]) {
+        const parsed = parseInt(args[++i], 10);
+        if (!Number.isNaN(parsed) && parsed > 0) count = Math.min(parsed, 10);
+        continue;
+      }
+      if ((a === '-W' || a === '--timeout') && args[i + 1]) {
+        const parsed = parseInt(args[++i], 10);
+        if (!Number.isNaN(parsed) && parsed > 0) timeoutSeconds = Math.min(parsed, 10);
+        continue;
+      }
+      if (!a.startsWith('-')) nonFlags.push(a);
     }
+
+    const target = nonFlags[0];
+    if (!target) { ctx.out('ping: missing host'); return; }
+    const resolution = resolveNetworkTarget(target, ctx);
+    if (resolution.kind === 'error') {
+      ctx.out(`ping: ${target}: Name or service not known`);
+      ctx.setExitCode(1);
+      return;
+    }
+    const resolved = resolution.resolved;
+    if (!ctx.network.canReach(resolved)) {
+      ctx.out(`ping: ${target}: Network is unreachable`);
+      ctx.setExitCode(1);
+      return;
+    }
+
+    ctx.out(`PING ${resolved} (${resolved}) 56(84) bytes of data.`);
+    let sent = 0;
+    let received = 0;
+    const samples: number[] = [];
+    const startedAt = Date.now();
+    for (let i = 1; i <= count; i++) {
+      sent++;
+      const probe = await ctx.network.probeHead(resolution.canonicalHost, timeoutSeconds * 1000);
+      if (probe.ok && typeof probe.rttMs === 'number') {
+        const rtt = Math.max(0.01, probe.rttMs);
+        samples.push(rtt);
+        received++;
+        ctx.out(`64 bytes from ${resolved}: icmp_seq=${i} ttl=64 time=${rtt.toFixed(3)} ms`);
+      } else if (probe.error === 'timeout') {
+        ctx.out(`From ${ctx.network.getGateway()} icmp_seq=${i} Destination Host Unreachable`);
+      } else {
+        ctx.out(`ping: ${target}: Name or service not known`);
+        break;
+      }
+      if (i < count) await sleep(1000);
+    }
+
     ctx.out(`--- ${resolved} ping statistics ---`);
-    ctx.out('4 packets transmitted, 4 received, 0% packet loss, time 3003ms');
-    ctx.out('rtt min/avg/max/mdev = 0.050/0.200/0.500/0.100 ms');
+    const elapsed = Math.max(1, Date.now() - startedAt);
+    const lossPct = sent === 0 ? 100 : Math.round(((sent - received) / sent) * 100);
+    ctx.out(`${sent} packets transmitted, ${received} received, ${lossPct}% packet loss, time ${elapsed}ms`);
+    if (samples.length > 0) {
+      const min = Math.min(...samples);
+      const max = Math.max(...samples);
+      const avg = samples.reduce((acc, n) => acc + n, 0) / samples.length;
+      const mdev = Math.sqrt(samples.reduce((acc, n) => acc + ((n - avg) ** 2), 0) / samples.length);
+      ctx.out(`rtt min/avg/max/mdev = ${min.toFixed(3)}/${avg.toFixed(3)}/${max.toFixed(3)}/${mdev.toFixed(3)} ms`);
+    }
+    if (received === 0) ctx.setExitCode(1);
   },
   man: `PING(8)                  System Manager's Manual        PING(8)
 
@@ -102,6 +210,9 @@ const nmcli: CommandDefinition = {
   async execute(args, ctx) {
     const sub = args[0]?.toLowerCase();
     const sub2 = args[1]?.toLowerCase();
+    const sourceIp = ctx.network.getSourceIP();
+    const gateway = ctx.network.getGateway();
+    const dns = ctx.network.getDns();
     if ((sub === 'device' || sub === 'd') && (sub2 === 'status' || sub2 === 's' || !sub2)) {
       ctx.out('DEVICE  TYPE      STATE      CONNECTION');
       ctx.out('eth0    ethernet  connected  eth0');
@@ -114,10 +225,10 @@ const nmcli: CommandDefinition = {
       ctx.out('GENERAL.STATE:                          100 (connected)');
       ctx.out('GENERAL.CONNECTION:                     eth0');
       ctx.out('WIRED-PROPERTIES.CARRIER:               on');
-      ctx.out('IP4.ADDRESS[1]:                         192.168.1.100/24');
-      ctx.out('IP4.GATEWAY:                            192.168.1.1');
-      ctx.out('IP4.DNS[1]:                             8.8.8.8');
-      ctx.out('IP4.DNS[2]:                             8.8.4.4');
+      ctx.out(`IP4.ADDRESS[1]:                         ${sourceIp}/24`);
+      ctx.out(`IP4.GATEWAY:                            ${gateway}`);
+      ctx.out(`IP4.DNS[1]:                             ${dns[0] ?? '8.8.8.8'}`);
+      ctx.out(`IP4.DNS[2]:                             ${dns[1] ?? '8.8.4.4'}`);
       ctx.out('IP6.ADDRESS[1]:                         fe80::5054:ff:fe12:3456/64');
     } else if (sub === 'general' || sub === 'g') {
       ctx.out('STATE      CONNECTIVITY  WIFI-HW  WIFI   WWAN-HW  WWAN');
@@ -205,6 +316,13 @@ const curl: CommandDefinition = {
       return;
     }
 
+    const resolution = resolveNetworkTarget(parsed.hostname, ctx);
+    if (resolution.kind === 'error') {
+      ctx.out(`curl: (6) Could not resolve host: ${parsed.hostname}`);
+      ctx.setExitCode(6);
+      return;
+    }
+
     try {
       const started = Date.now();
       const controller = new AbortController();
@@ -232,6 +350,8 @@ const curl: CommandDefinition = {
       const text = headOnly ? '' : await response.text();
       const elapsedSec = Math.max(0.001, (Date.now() - started) / 1000);
       const bytes = new TextEncoder().encode(text).length;
+      const estimatedHeaderBytes = 220;
+      ctx.network.recordTransfer(128, estimatedHeaderBytes + bytes);
       const speed = Math.max(1, Math.round(bytes / elapsedSec));
       const total = String(bytes).padStart(5);
 
@@ -272,7 +392,7 @@ const curl: CommandDefinition = {
       }
       const message = err instanceof Error ? err.message : '';
       if (/failed to fetch|networkerror/i.test(message)) {
-        ctx.out(`curl: (7) Failed to connect to ${parsed.hostname}`);
+        ctx.out(`curl: (7) Failed to connect to ${resolution.kind === 'ok' ? resolution.canonicalHost : parsed.hostname}`);
         ctx.setExitCode(7);
         return;
       }

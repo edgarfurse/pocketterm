@@ -3,6 +3,35 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.11.1 - 2026-03-10
+
+### Added
+
+- Added stderr-aware shell redirection support: `2>`, `2>>`, `2>&1`, and `|&` with final-segment redirection handling in pipelines
+- Added resolver contract tests for hosts-first resolution and unresolved-host failures across `ping` and `curl`
+- Added integration coverage for redirection merge/append behavior and shell exit-code parity (`127`, `2`, `130`)
+
+### Changed
+
+- Updated shell parser and pipeline executor to model stdout/stderr separately and route streams based on redirection order
+- Propagated command-level `setExitCode(...)` status through command execution so script/pipeline status reflects command intent
+- Standardized `sudo` misuse (`sudo` without command) to shell-usage status `2`
+- Unified network target resolution path for `ping` and `curl` to follow literal IP -> `/etc/hosts` -> DNS-fallback behavior
+
+## 0.11.0 - 2026-03-10
+
+### Added
+
+- Added proxy-fidelity network boot artifacts: dynamic `/proc/net/dev` and boot-seeded `/etc/sysconfig/network-scripts/ifcfg-eth0`
+- Added browser system/network probe modeling in `NetworkLogic` with transfer counters and public-IP-seeded local addressing fallback
+- Added regression coverage for network probe files and transfer-counter updates (`networkLogic` + shell integration tests)
+
+### Changed
+
+- Reworked `ping` to use browser-safe fetch HEAD probes with timeout control, RTT reporting, packet stats, and realistic failure surfaces
+- Updated `curl` to feed network transfer counters so simulated interface telemetry tracks actual PocketTerm network activity
+- Updated `ip` and `nmcli` outputs to reflect the active simulated interface address/gateway/DNS instead of fixed literals
+
 ## 0.10.4 - 2026-03-10
 
 ### Changed

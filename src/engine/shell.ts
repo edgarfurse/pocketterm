@@ -129,9 +129,16 @@ interface ParsedSegment {
 
 interface ParsedPipeline {
   segments: ParsedSegment[];
-  redirectTarget: string | null;
-  redirectAppend: boolean;
+  pipeStderrToNext: boolean[];
+  redirections: ParsedRedirection[];
   parseError: string | null;
+}
+
+type ParsedRedirectionOp = '>' | '>>' | '2>' | '2>>' | '2>&1';
+
+interface ParsedRedirection {
+  op: ParsedRedirectionOp;
+  target: string | null;
 }
 
 function tokenize(input: string): { tokens: string[]; error: string | null } {
@@ -193,7 +200,26 @@ function tokenize(input: string): { tokens: string[]; error: string | null } {
     }
     if (ch === '|') {
       pushCurrent();
-      tokens.push('|');
+      if (input[i + 1] === '&') {
+        tokens.push('|&');
+        i++;
+      } else {
+        tokens.push('|');
+      }
+      continue;
+    }
+    if (ch === '2' && input[i + 1] === '>') {
+      pushCurrent();
+      if (input.slice(i, i + 4) === '2>&1') {
+        tokens.push('2>&1');
+        i += 3;
+      } else if (input[i + 2] === '>') {
+        tokens.push('2>>');
+        i += 2;
+      } else {
+        tokens.push('2>');
+        i++;
+      }
       continue;
     }
     if (ch === '>') {
@@ -219,41 +245,52 @@ function tokenize(input: string): { tokens: string[]; error: string | null } {
 
 function parsePipeline(trimmed: string): ParsedPipeline {
   const { tokens, error } = tokenize(trimmed);
-  if (error) return { segments: [], redirectTarget: null, redirectAppend: false, parseError: error };
-  if (tokens.length === 0) return { segments: [], redirectTarget: null, redirectAppend: false, parseError: null };
+  if (error) return { segments: [], pipeStderrToNext: [], redirections: [], parseError: error };
+  if (tokens.length === 0) return { segments: [], pipeStderrToNext: [], redirections: [], parseError: null };
 
-  let redirectTarget: string | null = null;
-  let redirectAppend = false;
+  const redirections: ParsedRedirection[] = [];
   const segmentTokens: string[][] = [[]];
+  const pipeStderrToNext: boolean[] = [];
   let idx = 0;
   while (idx < tokens.length) {
     const tok = tokens[idx];
-    if (tok === '|') {
+    if (tok === '|' || tok === '|&') {
       if (segmentTokens[segmentTokens.length - 1].length === 0) {
-        return { segments: [], redirectTarget: null, redirectAppend: false, parseError: 'bash: syntax error near unexpected token `|`' };
+        return { segments: [], pipeStderrToNext: [], redirections: [], parseError: 'bash: syntax error near unexpected token `|`' };
       }
+      pipeStderrToNext.push(tok === '|&');
       segmentTokens.push([]);
       idx++;
       continue;
     }
-    if (tok === '>' || tok === '>>') {
+    if (tok === '>' || tok === '>>' || tok === '2>' || tok === '2>>' || tok === '2>&1') {
+      if (tok === '2>&1') {
+        const rest = tokens.slice(idx + 1);
+        if (rest.includes('|') || rest.includes('|&')) {
+          return { segments: [], pipeStderrToNext: [], redirections: [], parseError: 'bash: redirection only supported on the final pipeline command' };
+        }
+        redirections.push({ op: '2>&1', target: null });
+        idx++;
+        continue;
+      }
       const target = tokens[idx + 1];
-      if (!target || target === '|' || target === '>' || target === '>>') {
-        return { segments: [], redirectTarget: null, redirectAppend: false, parseError: 'bash: syntax error near unexpected token `newline`' };
+      if (!target || target === '|' || target === '|&' || target === '>' || target === '>>' || target === '2>' || target === '2>>' || target === '2>&1') {
+        return { segments: [], pipeStderrToNext: [], redirections: [], parseError: 'bash: syntax error near unexpected token `newline`' };
       }
-      redirectTarget = target;
-      redirectAppend = tok === '>>';
-      if (idx + 2 < tokens.length) {
-        return { segments: [], redirectTarget: null, redirectAppend: false, parseError: `bash: syntax error near unexpected token \`${tokens[idx + 2]}\`` };
+      const rest = tokens.slice(idx + 2);
+      if (rest.includes('|') || rest.includes('|&')) {
+        return { segments: [], pipeStderrToNext: [], redirections: [], parseError: 'bash: redirection only supported on the final pipeline command' };
       }
-      break;
+      redirections.push({ op: tok as ParsedRedirectionOp, target });
+      idx += 2;
+      continue;
     }
     segmentTokens[segmentTokens.length - 1].push(tok);
     idx++;
   }
 
   if (segmentTokens[segmentTokens.length - 1].length === 0) {
-    return { segments: [], redirectTarget: null, redirectAppend: false, parseError: 'bash: syntax error: empty command in pipeline' };
+    return { segments: [], pipeStderrToNext: [], redirections: [], parseError: 'bash: syntax error: empty command in pipeline' };
   }
 
   const segments: ParsedSegment[] = segmentTokens.map((parts) => {
@@ -268,7 +305,7 @@ function parsePipeline(trimmed: string): ParsedPipeline {
     return { cmd, args, sudo };
   });
 
-  return { segments, redirectTarget, redirectAppend, parseError: null };
+  return { segments, pipeStderrToNext, redirections, parseError: null };
 }
 
 // ── Shell class ──
@@ -374,8 +411,21 @@ export class Shell {
     const initialUser = this.localFs.getCurrentUser();
     this.cwd = initialUser === 'root' ? '/root' : `/home/${initialUser}`;
     this.syncCoreEnv();
+    this.localFs.mkdir('/proc/net', 'root', true);
+    this.localFs.mkdir('/etc/sysconfig', 'root', true);
+    this.localFs.mkdir('/etc/sysconfig/network-scripts', 'root', true);
+    this.applyNetworkFidelityFiles();
+    this.network.setOnStatsChange(() => this.applyNetworkFidelityFiles());
+    void this.network.hydrateAddressFromPublicIp().then((changed) => {
+      if (changed) this.applyNetworkFidelityFiles();
+    });
     persistServices(this.services);
     persistJournalEntries(this.journalEntries);
+  }
+
+  private applyNetworkFidelityFiles(): void {
+    this.localFs.writeFile('/proc/net/dev', this.network.formatProcNetDev(), 'root', true);
+    this.localFs.writeFile('/etc/sysconfig/network-scripts/ifcfg-eth0', this.network.formatIfcfgEth0(), 'root', true);
   }
 
   private verifyDefaultTutorialCoverage(): void {
@@ -824,6 +874,25 @@ export class Shell {
     outOverride: ((s: string) => void) | null,
     rawOutOverride: ((s: string) => void) | null,
   ): Promise<number> {
+    type StreamDest = { kind: 'terminal-out' | 'terminal-err' | 'file'; target?: string; append?: boolean };
+
+    const asPayload = (chunks: string[]): string => {
+      if (chunks.length === 0) return '';
+      let out = chunks.join('\n');
+      if (!out.endsWith('\n')) out += '\n';
+      return out;
+    };
+
+    const writeDest = (targetPath: string, append: boolean, content: string): boolean => {
+      if (!content) return true;
+      const user = this.fs.getCurrentUser();
+      if (append) {
+        const existing = this.fs.readFile(targetPath, user) ?? '';
+        return this.fs.writeFile(targetPath, existing + content, user, false);
+      }
+      return this.fs.writeFile(targetPath, content, user, false);
+    };
+
     // Handle sudo password prompt for the first segment
     for (const seg of pipeline.segments) {
       seg.args = seg.args.map((a) => this.expandVariables(a));
@@ -847,40 +916,83 @@ export class Shell {
     for (let i = 0; i < pipeline.segments.length; i++) {
       const seg = pipeline.segments[i];
       const isLast = i === pipeline.segments.length - 1;
-      const needCapture = !isLast || pipeline.redirectTarget !== null;
+      const needCapture = !isLast || pipeline.redirections.length > 0;
 
       if (needCapture) {
-        // Capture output instead of printing to terminal
-        const captured: string[] = [];
-        const captureOut = (s: string) => { captured.push(s); };
-        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, captureOut, (s: string) => { captured.push(s); }, pipedInput);
-        pipedInput = captured.join('\n');
-        // Normalize pipe framing so downstream text filters receive line-oriented input.
-        if (pipedInput.length > 0 && !pipedInput.endsWith('\n')) {
-          pipedInput += '\n';
-        }
-      } else {
-        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, outOverride, rawOutOverride, pipedInput);
-      }
-    }
+        const capturedOut: string[] = [];
+        const capturedErr: string[] = [];
+        const captureOut = (s: string) => { capturedOut.push(s); };
+        const captureErr = (s: string) => { capturedErr.push(s); };
 
-    // Handle redirection: write captured output to file
-    if (pipeline.redirectTarget !== null && pipedInput !== null) {
-      const targetPath = this.fs.resolvePath(this.cwd, pipeline.redirectTarget);
-      const user = this.fs.getCurrentUser();
-      if (pipeline.redirectAppend) {
-        const existing = this.fs.readFile(targetPath, user) ?? '';
-        const ok = this.fs.writeFile(targetPath, existing + pipedInput, user, false);
-        if (!ok) {
-          this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
-          status = 1;
+        if (!isLast) {
+          const pipeErr = pipeline.pipeStderrToNext[i] === true;
+          status = await this.runCommand(
+            seg.cmd,
+            seg.args,
+            seg.sudo,
+            captureOut,
+            null,
+            pipeErr ? captureErr : null,
+            pipedInput,
+          );
+          if (!pipeErr) {
+            for (const line of capturedErr) this.onOutput(line + '\r\n');
+          }
+          const pipedChunks = pipeErr ? [...capturedOut, ...capturedErr] : capturedOut;
+          pipedInput = asPayload(pipedChunks);
+          continue;
+        }
+
+        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, captureOut, null, captureErr, pipedInput);
+
+        let stdoutDest: StreamDest = { kind: 'terminal-out' };
+        let stderrDest: StreamDest = { kind: 'terminal-err' };
+        for (const redir of pipeline.redirections) {
+          if (redir.op === '>') stdoutDest = { kind: 'file', target: redir.target ?? '', append: false };
+          if (redir.op === '>>') stdoutDest = { kind: 'file', target: redir.target ?? '', append: true };
+          if (redir.op === '2>') stderrDest = { kind: 'file', target: redir.target ?? '', append: false };
+          if (redir.op === '2>>') stderrDest = { kind: 'file', target: redir.target ?? '', append: true };
+          if (redir.op === '2>&1') stderrDest = { ...stdoutDest };
+        }
+
+        const fileWrites = new Map<string, { append: boolean; content: string; label: string }>();
+        const applyPayload = (dest: StreamDest, chunks: string[], isErr: boolean): void => {
+          if (chunks.length === 0) return;
+          if (dest.kind === 'terminal-out') {
+            const sink = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+            for (const line of chunks) sink(line);
+            return;
+          }
+          if (dest.kind === 'terminal-err') {
+            const sink = isErr ? ((s: string) => this.onOutput(s + '\r\n')) : (outOverride ?? ((s: string) => this.onOutput(s + '\r\n')));
+            for (const line of chunks) sink(line);
+            return;
+          }
+          const target = dest.target ?? '';
+          const abs = this.fs.resolvePath(this.cwd, target);
+          const existing = fileWrites.get(abs);
+          const payload = asPayload(chunks);
+          if (!payload) return;
+          if (existing) {
+            const combined = existing.content + payload;
+            fileWrites.set(abs, { append: existing.append, content: combined, label: existing.label });
+          } else {
+            fileWrites.set(abs, { append: dest.append ?? false, content: payload, label: target });
+          }
+        };
+
+        applyPayload(stdoutDest, capturedOut, false);
+        applyPayload(stderrDest, capturedErr, true);
+
+        for (const [absPath, data] of fileWrites.entries()) {
+          const ok = writeDest(absPath, data.append, data.content);
+          if (!ok) {
+            this.onOutput(`bash: ${data.label}: Permission denied\r\n`);
+            status = 1;
+          }
         }
       } else {
-        const ok = this.fs.writeFile(targetPath, pipedInput, user, false);
-        if (!ok) {
-          this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
-          status = 1;
-        }
+        status = await this.runCommand(seg.cmd, seg.args, seg.sudo, outOverride, rawOutOverride, null, pipedInput);
       }
     }
     return status;
@@ -942,11 +1054,14 @@ export class Shell {
     sudo: boolean,
     outOverride: ((s: string) => void) | null,
     rawOutOverride: ((s: string) => void) | null,
+    errOverride: ((s: string) => void) | null,
   ): CommandContext {
     const out = outOverride
       ? (s: string) => outOverride(s)
       : (s: string) => this.onOutput(s + '\r\n');
-    const err = (s: string) => this.onOutput(s + '\r\n');
+    const err = errOverride
+      ? (s: string) => errOverride(s)
+      : (s: string) => this.onOutput(s + '\r\n');
     const rawOut = rawOutOverride
       ? (s: string) => rawOutOverride(s)
       : (s: string) => this.onOutput(s);
@@ -991,7 +1106,7 @@ export class Shell {
         persistEnvVars(this.envVars);
       },
       getEnvEntries: () => Array.from(this.envVars.entries()),
-      outputMode: outOverride ? 'pipe' : 'terminal',
+      outputMode: outOverride || errOverride ? 'pipe' : 'terminal',
       getAliases: () => {
         const out: Record<string, { cmd: string; prependArgs: string[] }> = {};
         for (const [k, v] of Object.entries(this.aliases)) {
@@ -1025,12 +1140,15 @@ export class Shell {
     sudo: boolean,
     outOverride: ((s: string) => void) | null,
     rawOutOverride: ((s: string) => void) | null,
+    errOverride: ((s: string) => void) | null,
     pipedInput: string | null,
   ): Promise<number> {
+    this.pendingExitCodeOverride = null;
+
     if (sudo && !cmd) {
       const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
       termOut('usage: sudo <command>');
-      return 1;
+      return 2;
     }
 
     const alias = this.aliases[cmd];
@@ -1117,7 +1235,7 @@ export class Shell {
         termOut(`bash: ${cmd}: command not found`);
         return 127;
       }
-      const ctx = this.buildContext(sudo, outOverride, rawOutOverride);
+      const ctx = this.buildContext(sudo, outOverride, rawOutOverride, errOverride);
       await definition.execute(args, ctx);
       const persistErr = this.fs.getLastPersistError();
       if (persistErr) {
@@ -1125,7 +1243,7 @@ export class Shell {
         termOut(`\x1b[1;31mwrite error: ${persistErr}\x1b[0m`);
         return 1;
       }
-      return 0;
+      return this.pendingExitCodeOverride ?? 0;
     }
 
     if (sudo && cmd === '-k') {

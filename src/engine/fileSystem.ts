@@ -645,6 +645,9 @@ export class FileSystem {
       '/usr/share/man/man1',
       '/var/log',
       '/home/guest',
+      '/proc/net',
+      '/etc/sysconfig',
+      '/etc/sysconfig/network-scripts',
     ]) {
       const owner = path === '/home/guest' ? 'guest' : 'root';
       const group = path === '/home/guest' ? 'guest' : 'root';
@@ -656,6 +659,8 @@ export class FileSystem {
     this.ensureFile('/var/log/messages', '', 'root', 'root', '640');
     this.ensureFile('/var/log/secure', '', 'root', 'root', '600');
     this.ensureFile('/var/log/dnf.log', '', 'root', 'root', '644');
+    this.ensureFile('/proc/net/dev', '', 'root', 'root', '444');
+    this.ensureFile('/etc/sysconfig/network-scripts/ifcfg-eth0', '', 'root', 'root', '644');
     this.ensureFile('/usr/share/man/man1/pocketterm.1', [
       'POCKETTERM(1)                User Commands                POCKETTERM(1)',
       '',

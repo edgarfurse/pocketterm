@@ -316,6 +316,42 @@ describe('shell package path integration', () => {
     expect(uptime).toMatch(/^\d+\.\d{2}\s+\d+\.\d{2}$/);
   });
 
+  it('seeds dynamic network probe files and updates /proc/net/dev counters', async () => {
+    const outputs: string[] = [];
+    const network = new NetworkLogic();
+    const shell = new Shell(
+      new FileSystem('guest'),
+      network,
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    let start = outputs.length;
+    await shell.execute('cat /etc/sysconfig/network-scripts/ifcfg-eth0');
+    const ifcfgOut = outputs.slice(start).join('');
+    expect(ifcfgOut).toContain('DEVICE=eth0');
+    expect(ifcfgOut).toContain('IPADDR=192.168.1.');
+
+    start = outputs.length;
+    await shell.execute('cat /proc/net/dev');
+    const before = outputs.slice(start).join('');
+
+    network.recordTransfer(400, 800);
+    start = outputs.length;
+    await shell.execute('cat /proc/net/dev');
+    const after = outputs.slice(start).join('');
+
+    expect(after).toContain('eth0');
+    expect(after).not.toBe(before);
+  });
+
   it('formats wc counts correctly for piped input and wc -l regression', async () => {
     const outputs: string[] = [];
     const shell = new Shell(
@@ -386,5 +422,71 @@ describe('shell package path integration', () => {
     expect(missingPipeOut).toContain('cat: missing.txt: No such file or directory');
     expect(missingPipeOut).toContain('0');
 
+  });
+
+  it('supports stderr redirection, 2>&1 merge, and |& piping', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('ls /root 2> err.txt');
+    await shell.execute('cat err.txt');
+    let out = outputs.join('');
+    expect(out).toContain('bash: ls: /root: Permission denied');
+
+    await shell.execute('ls /root 2>> err.txt');
+    await shell.execute('wc -l err.txt');
+    out = outputs.join('');
+    expect(out).toContain('2 err.txt');
+
+    await shell.execute('cat /etc/hosts missing.txt > merged.txt 2>&1');
+    await shell.execute('cat merged.txt');
+    out = outputs.join('');
+    expect(out).toContain('localhost');
+    expect(out).toContain('cat: missing.txt: No such file or directory');
+
+    const start = outputs.length;
+    await shell.execute('ls /root |& grep denied');
+    const pipedErr = outputs.slice(start).join('').trim();
+    expect(pipedErr).toBe('bash: ls: /root: Permission denied');
+  });
+
+  it('keeps exit-code parity for not found, misuse, and interrupt', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('no_such_command');
+    expect(shell.getLastExitCode()).toBe(127);
+
+    await shell.execute('sudo');
+    expect(shell.getLastExitCode()).toBe(2);
+
+    const run = shell.execute('top');
+    setTimeout(() => shell.requestInterrupt(), 50);
+    await run;
+    expect(shell.getLastExitCode()).toBe(130);
   });
 });
