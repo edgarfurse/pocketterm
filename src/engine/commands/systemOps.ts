@@ -1,5 +1,4 @@
 import type { CommandContext, CommandDefinition } from './types';
-import { ALIASES } from './aliases';
 
 // ── Shared dynamic helpers ──
 
@@ -62,17 +61,43 @@ function fmtKB(kb: number): string {
   return `${kb}Ki`;
 }
 
-function resolveCommandPath(commandName: string, ctx: CommandContext): string | null {
-  const resolved = ALIASES[commandName]?.cmd ?? commandName;
-  const def = ctx.registry.get(resolved);
-  if (!def) return null;
-  if (def.requiresPackage && !ctx.installedPackages.has(def.requiresPackage)) return null;
-  return `/usr/bin/${resolved}`;
+type CommandKind = 'alias' | 'builtin' | 'external' | 'missing';
+
+interface CommandResolution {
+  kind: CommandKind;
+  name: string;
+  resolvedName?: string;
+  path?: string;
+  aliasExpansion?: string;
 }
 
 const SHELL_BUILTINS = new Set([
   'cd', 'pwd', 'help', 'man', 'alias', 'unalias', 'export', 'source', '.', 'history', 'exit', 'command', 'type',
 ]);
+
+function classifyCommand(commandName: string, ctx: CommandContext): CommandResolution {
+  const aliases = ctx.getAliases();
+  const alias = aliases[commandName];
+  if (alias) {
+    const resolvedName = alias.cmd;
+    const def = ctx.registry.get(resolvedName);
+    const available = !!def && (!def.requiresPackage || ctx.installedPackages.has(def.requiresPackage));
+    const path = available && !SHELL_BUILTINS.has(resolvedName) ? `/usr/bin/${resolvedName}` : undefined;
+    return {
+      kind: 'alias',
+      name: commandName,
+      resolvedName,
+      path,
+      aliasExpansion: [alias.cmd, ...alias.prependArgs].join(' '),
+    };
+  }
+
+  const def = ctx.registry.get(commandName);
+  if (!def) return { kind: 'missing', name: commandName };
+  if (def.requiresPackage && !ctx.installedPackages.has(def.requiresPackage)) return { kind: 'missing', name: commandName };
+  if (SHELL_BUILTINS.has(commandName)) return { kind: 'builtin', name: commandName };
+  return { kind: 'external', name: commandName, path: `/usr/bin/${commandName}` };
+}
 
 // ── Commands ──
 
@@ -209,7 +234,10 @@ const which_cmd: CommandDefinition = {
       ctx.out('which: no command in ($PATH)');
       return;
     }
-    const path = resolveCommandPath(cmd, ctx);
+    const resolved = classifyCommand(cmd, ctx);
+    const path = resolved.path ?? (
+      resolved.kind === 'external' ? `/usr/bin/${resolved.name}` : undefined
+    );
     if (!path) { ctx.out(`${cmd} not found`); return; }
     ctx.out(path);
   },
@@ -251,7 +279,10 @@ const command_builtin: CommandDefinition = {
 
     let allFound = true;
     for (const name of names) {
-      const path = resolveCommandPath(name, ctx);
+      const resolved = classifyCommand(name, ctx);
+      const path = resolved.path ?? (
+        resolved.kind === 'external' ? `/usr/bin/${resolved.name}` : undefined
+      );
       if (path) {
         ctx.out(path);
       } else {
@@ -296,24 +327,17 @@ const type_builtin: CommandDefinition = {
 
     let allFound = true;
     for (const name of args) {
-      const alias = ALIASES[name];
-      if (alias) {
-        ctx.out(`${name} is aliased to '${[alias.cmd, ...alias.prependArgs].join(' ')}'`);
-        continue;
+      const resolved = classifyCommand(name, ctx);
+      if (resolved.kind === 'alias') {
+        ctx.out(`${name} is aliased to '${resolved.aliasExpansion}'`);
+      } else if (resolved.kind === 'builtin') {
+        ctx.out(`${name} is a shell builtin`);
+      } else if (resolved.kind === 'external') {
+        ctx.out(`${name} is ${resolved.path}`);
+      } else {
+        allFound = false;
+        ctx.out(`bash: type: ${name}: not found`);
       }
-
-      const def = ctx.registry.get(name);
-      if (def && (!def.requiresPackage || ctx.installedPackages.has(def.requiresPackage))) {
-        if (SHELL_BUILTINS.has(name)) {
-          ctx.out(`${name} is a shell builtin`);
-        } else {
-          ctx.out(`${name} is /usr/bin/${name}`);
-        }
-        continue;
-      }
-
-      allFound = false;
-      ctx.out(`bash: type: ${name}: not found`);
     }
     if (!allFound) ctx.setExitCode(1);
   },

@@ -4,7 +4,6 @@ import { FileSystem } from '../fileSystem';
 import { DEFAULT_TUTORIALS, type TutorialCartridge } from '../tutorials';
 import { exportSystemState, importSystemState } from '../storage';
 import { getManPage } from '../manPages';
-import { ALIASES } from './aliases';
 
 const POCKETTERM_MAN_PAGE = `POCKETTERM(1)                User Commands                POCKETTERM(1)
 
@@ -751,10 +750,10 @@ const alias_cmd: CommandDefinition = {
       const rendered = [value.cmd, ...value.prependArgs].join(' ').trim();
       return `alias ${name}='${rendered}'`;
     };
-
     if (args.length === 0) {
-      for (const name of Object.keys(ALIASES).sort()) {
-        ctx.out(formatAlias(name, ALIASES[name]));
+      const aliases = ctx.getAliases();
+      for (const name of Object.keys(aliases).sort()) {
+        ctx.out(formatAlias(name, aliases[name]));
       }
       return;
     }
@@ -762,7 +761,8 @@ const alias_cmd: CommandDefinition = {
     for (const arg of args) {
       const eqIdx = arg.indexOf('=');
       if (eqIdx < 0) {
-        const existing = ALIASES[arg];
+        const aliases = ctx.getAliases();
+        const existing = aliases[arg];
         if (!existing) {
           ctx.out(`alias: ${arg}: not found`);
           ctx.setExitCode(1);
@@ -788,7 +788,7 @@ const alias_cmd: CommandDefinition = {
         ctx.setExitCode(1);
         continue;
       }
-      ALIASES[name] = { cmd: tokens[0], prependArgs: tokens.slice(1) };
+      ctx.setAlias(name, { cmd: tokens[0], prependArgs: tokens.slice(1) });
     }
   },
   man: `ALIAS(1)                    Builtin Commands                ALIAS(1)
@@ -822,12 +822,11 @@ const unalias_cmd: CommandDefinition = {
       ctx.setExitCode(1);
       return;
     }
-    if (!(name in ALIASES)) {
+    if (!ctx.removeAlias(name)) {
       ctx.out(`unalias: ${name}: not found`);
       ctx.setExitCode(1);
       return;
     }
-    delete ALIASES[name];
   },
   man: `UNALIAS(1)                  Builtin Commands              UNALIAS(1)
 

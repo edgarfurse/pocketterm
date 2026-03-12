@@ -8,7 +8,7 @@ import { packageMgmtCommands } from './packageMgmt';
 import { miscCommands } from './misc';
 import { lockedCommands } from './lockedCmds';
 import { sysAdminCommands } from './sysAdmin';
-import { ALIASES } from './aliases';
+import { DEFAULT_ALIASES, cloneDefaultAliases } from './aliases';
 
 export type { CommandDefinition, CommandContext, SSHSession, ProcessInfo } from './types';
 export { sleep } from './types';
@@ -30,4 +30,4 @@ for (const cmd of allCommands) {
   commandRegistry.set(cmd.name, cmd);
 }
 
-export { ALIASES };
+export { DEFAULT_ALIASES, cloneDefaultAliases };

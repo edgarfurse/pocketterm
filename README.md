@@ -120,10 +120,18 @@ Notes:
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
+- `cd ~` always resolves to the canonical sandbox home (`/home/guest` for guest), even if `$HOME` is changed.
 - Default muscle-memory alias `ll` maps to `ls -la`.
 - Exported environment variables persist across shell recreation.
 - `/root` permission surfaces use bash-style "Permission denied" wording.
 - `cat /proc/uptime` is dynamic; `/proc/cpuinfo` and `/proc/meminfo` are deterministic simulation seeds.
+
+### Intentional Simulator Contracts
+
+- **Line model:** `wc -l` and `grep -c` both treat final unterminated text as a line for intuitive sandbox behavior.
+- **Pipeline framing:** piped command output is normalized as line-oriented data (trailing newline added when needed).
+- **Resolution source:** `type` is the canonical command-resolution model; `which` and `command -v` are path-focused views of the same lookup.
+- **Error strings:** core commands prefer exact bash-style wording for high-fidelity immersion.
 
 ---
 

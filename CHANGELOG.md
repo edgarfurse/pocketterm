@@ -3,6 +3,16 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.10.3 - 2026-03-10
+
+### Changed
+
+- Hardened alias behavior to be shell-session local, preventing alias/unalias mutations from leaking across shell instances
+- Unified command identity resolution so `type`, `which`, and `command -v` now share one classification model and remain consistent
+- Normalized pipeline framing by ensuring captured pipe output is line-oriented (trailing newline when needed) for predictable downstream parsing
+- Aligned `wc -l` and `grep -c` to the same PocketTerm line model, counting a final unterminated text chunk as a line for intuitive interactive behavior
+- Documented intentional simulator contracts in `README.md` for line semantics, pipeline framing, command resolution, canonical home behavior, and bash-style error wording
+
 ## 0.10.2 - 2026-03-10
 
 ### Added

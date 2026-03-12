@@ -315,4 +315,59 @@ describe('shell package path integration', () => {
     const uptime = outputs.slice(start).join('').trim();
     expect(uptime).toMatch(/^\d+\.\d{2}\s+\d+\.\d{2}$/);
   });
+
+  it('formats wc counts correctly for piped input and wc -l regression', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    let start = outputs.length;
+    await shell.execute('ls | wc -l');
+    const lsWcOut = outputs.slice(start).join('').trim();
+    expect(lsWcOut).toBe('1');
+
+    start = outputs.length;
+    await shell.execute('echo alpha beta gamma | wc -w');
+    const wordsOut = outputs.slice(start).join('').trim();
+    expect(wordsOut).toBe('3');
+
+    start = outputs.length;
+    await shell.execute('echo alpha beta gamma | wc -lw');
+    const linesWordsOut = outputs.slice(start).join('').trim();
+    expect(linesWordsOut).toBe('1 3');
+
+    await shell.execute('echo alpha beta > one.txt');
+    start = outputs.length;
+    await shell.execute('cat one.txt | wc -l');
+    const trailingNewlineOut = outputs.slice(start).join('').trim();
+    expect(trailingNewlineOut).toBe('1');
+
+    await shell.execute('echo one > a.txt');
+    await shell.execute('echo two words > b.txt');
+    start = outputs.length;
+    await shell.execute('wc -lw a.txt b.txt');
+    const multiFileOut = outputs.slice(start).join('');
+    expect(multiFileOut).toContain('a.txt');
+    expect(multiFileOut).toContain('b.txt');
+    expect(multiFileOut).toContain('total');
+
+    await shell.execute('echo foo > nonl.txt');
+    await shell.execute('echo bar > withnl.txt');
+    start = outputs.length;
+    await shell.execute('cat nonl.txt | grep -c foo');
+    const grepCountUnterminated = outputs.slice(start).join('').trim();
+    expect(grepCountUnterminated).toBe('1');
+
+  });
 });

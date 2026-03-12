@@ -1,6 +1,6 @@
 import { FileSystem } from './fileSystem';
 import { NetworkLogic } from './networkLogic';
-import { commandRegistry, ALIASES } from './commands';
+import { commandRegistry, cloneDefaultAliases } from './commands';
 import type { CommandContext, SSHSession, ProcessInfo } from './commands';
 import { loadHardwareState, type HardwareState } from './hardwareState';
 import { DEFAULT_TUTORIAL_IDS, type TutorialCartridge } from './tutorials';
@@ -297,6 +297,7 @@ export class Shell {
   private liveInputQueue: string[] = [];
   private pendingExitCodeOverride: number | null = null;
   private envVars: Map<string, string>;
+  private aliases: Record<string, { cmd: string; prependArgs: string[] }>;
   private onOutput: OutputCallback;
   private onConfirm: ConfirmCallback;
   private onOpenEditor: OpenEditorCallback;
@@ -335,6 +336,7 @@ export class Shell {
     this.installedPackages = loadInstalledPackages();
     this.bootTime = Date.now();
     this.seedProcessTable();
+    this.aliases = cloneDefaultAliases();
     this.envVars = new Map<string, string>([
       ['PATH', '/usr/bin:/bin:/usr/local/bin'],
       ['SHELL', '/usr/bin/bash'],
@@ -737,7 +739,7 @@ export class Shell {
 
   getCommandCompletions(prefix: string): { matches: string[]; commonPrefix: string } {
     const commands = Array.from(commandRegistry.keys());
-    const aliases = Object.keys(ALIASES);
+    const aliases = Object.keys(this.aliases);
     const all = Array.from(new Set([...commands, ...aliases])).sort();
     const matches = all.filter((name) => name.startsWith(prefix));
     return {
@@ -853,6 +855,10 @@ export class Shell {
         const captureOut = (s: string) => { captured.push(s); };
         status = await this.runCommand(seg.cmd, seg.args, seg.sudo, captureOut, (s: string) => { captured.push(s); }, pipedInput);
         pipedInput = captured.join('\n');
+        // Normalize pipe framing so downstream text filters receive line-oriented input.
+        if (pipedInput.length > 0 && !pipedInput.endsWith('\n')) {
+          pipedInput += '\n';
+        }
       } else {
         status = await this.runCommand(seg.cmd, seg.args, seg.sudo, outOverride, rawOutOverride, pipedInput);
       }
@@ -864,13 +870,13 @@ export class Shell {
       const user = this.fs.getCurrentUser();
       if (pipeline.redirectAppend) {
         const existing = this.fs.readFile(targetPath, user) ?? '';
-        const ok = this.fs.writeFile(targetPath, existing + pipedInput + '\n', user, false);
+        const ok = this.fs.writeFile(targetPath, existing + pipedInput, user, false);
         if (!ok) {
           this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
           status = 1;
         }
       } else {
-        const ok = this.fs.writeFile(targetPath, pipedInput + '\n', user, false);
+        const ok = this.fs.writeFile(targetPath, pipedInput, user, false);
         if (!ok) {
           this.onOutput(`bash: ${pipeline.redirectTarget}: Permission denied\r\n`);
           status = 1;
@@ -983,6 +989,21 @@ export class Shell {
         persistEnvVars(this.envVars);
       },
       getEnvEntries: () => Array.from(this.envVars.entries()),
+      getAliases: () => {
+        const out: Record<string, { cmd: string; prependArgs: string[] }> = {};
+        for (const [k, v] of Object.entries(this.aliases)) {
+          out[k] = { cmd: v.cmd, prependArgs: [...v.prependArgs] };
+        }
+        return out;
+      },
+      setAlias: (name: string, value: { cmd: string; prependArgs: string[] }) => {
+        this.aliases[name] = { cmd: value.cmd, prependArgs: [...value.prependArgs] };
+      },
+      removeAlias: (name: string) => {
+        if (!(name in this.aliases)) return false;
+        delete this.aliases[name];
+        return true;
+      },
       requestReboot: () => this.onReboot(),
       addJournalEntry: (entry: string) => this.addJournalEntry(entry),
       getJournalEntries: () => [...this.journalEntries],
@@ -1009,7 +1030,7 @@ export class Shell {
       return 1;
     }
 
-    const alias = ALIASES[cmd];
+    const alias = this.aliases[cmd];
     if (alias) {
       cmd = alias.cmd;
       args = [...alias.prependArgs, ...args];

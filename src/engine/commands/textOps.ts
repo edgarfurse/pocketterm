@@ -19,6 +19,13 @@ function readFileChecked(ctx: CommandContext, path: string, label: string): stri
   return content;
 }
 
+function toLogicalLines(content: string): string[] {
+  if (content.length === 0) return [];
+  const lines = content.split('\n');
+  if (content.endsWith('\n')) return lines.slice(0, -1);
+  return lines;
+}
+
 const cat: CommandDefinition = {
   name: 'cat',
   async execute(args, ctx) {
@@ -90,7 +97,7 @@ const grep: CommandDefinition = {
       return;
     }
     if (content === null) return;
-    const lines = content.split('\n');
+    const lines = toLogicalLines(content);
     const search = caseI ? pattern.toLowerCase() : pattern;
     let matchCount = 0;
     for (let i = 0; i < lines.length; i++) {
@@ -118,6 +125,7 @@ DESCRIPTION
 
        The PATTERN is a simple string match (not full regex in this shell).
        grep can read from a file or from piped stdin.
+       In PocketTerm, an unterminated final text chunk is treated as a line.
 
 OPTIONS
        -i     Ignore case distinctions in both PATTERN and input.
@@ -296,24 +304,104 @@ const wc: CommandDefinition = {
   name: 'wc',
   async execute(args, ctx) {
     const { cleanArgs, stdin } = extractStdin(args);
-    const filePath = cleanArgs.find((a) => !a.startsWith('-'));
-    let content: string | null = null;
-    let label = filePath ?? '';
-    if (filePath) {
-      content = readFileChecked(ctx, filePath, 'wc');
-    } else if (stdin !== null) {
-      content = stdin;
-      label = '';
-    } else {
+    let showLines = false;
+    let showWords = false;
+    let showBytes = false;
+    const positional: string[] = [];
+    for (const arg of cleanArgs) {
+      if (arg === '--lines') {
+        showLines = true;
+        continue;
+      }
+      if (arg === '--words') {
+        showWords = true;
+        continue;
+      }
+      if (arg === '--bytes') {
+        showBytes = true;
+        continue;
+      }
+      if (arg.startsWith('--')) {
+        ctx.out(`wc: unrecognized option '${arg}'`);
+        ctx.setExitCode(1);
+        return;
+      }
+      if (arg.startsWith('-') && arg.length > 1) {
+        for (const ch of arg.slice(1)) {
+          if (ch === 'l') showLines = true;
+          else if (ch === 'w') showWords = true;
+          else if (ch === 'c') showBytes = true;
+          else {
+            ctx.out(`wc: invalid option -- '${ch}'`);
+            ctx.setExitCode(1);
+            return;
+          }
+        }
+        continue;
+      }
+      positional.push(arg);
+    }
+    if (!showLines && !showWords && !showBytes) {
+      showLines = true;
+      showWords = true;
+      showBytes = true;
+    }
+
+    const explicitInputs = positional.length > 0;
+    const inputSpecs = explicitInputs ? positional : ['-'];
+    if (!explicitInputs && stdin === null) {
       ctx.out('wc: missing operand');
+      ctx.setExitCode(1);
       return;
     }
-    if (content === null) return;
-    const lineCount = content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
-    const wordCount = content.split(/\s+/).filter(Boolean).length;
-    const byteCount = content.length;
-    const suffix = label ? ` ${label}` : '';
-    ctx.out(`  ${String(lineCount).padStart(4)} ${String(wordCount).padStart(5)} ${String(byteCount).padStart(5)}${suffix}`);
+
+    const formatCounts = (lineCount: number, wordCount: number, byteCount: number, label = ''): string => {
+      const parts: string[] = [];
+      if (showLines) parts.push(String(lineCount));
+      if (showWords) parts.push(String(wordCount));
+      if (showBytes) parts.push(String(byteCount));
+      return label ? `${parts.join(' ')} ${label}` : parts.join(' ');
+    };
+
+    let totalLines = 0;
+    let totalWords = 0;
+    let totalBytes = 0;
+    let rendered = 0;
+
+    for (const spec of inputSpecs) {
+      let content: string | null = null;
+      let label = '';
+      if (spec === '-') {
+        if (stdin === null) {
+          ctx.out('wc: -: No such file or directory');
+          ctx.setExitCode(1);
+          continue;
+        }
+        content = stdin;
+      } else {
+        content = readFileChecked(ctx, spec, 'wc');
+        label = spec;
+      }
+      if (content === null) {
+        ctx.setExitCode(1);
+        continue;
+      }
+
+      // PocketTerm line model: final unterminated text counts as a line.
+      const lineCount = toLogicalLines(content).length;
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+      const byteCount = new TextEncoder().encode(content).length;
+
+      totalLines += lineCount;
+      totalWords += wordCount;
+      totalBytes += byteCount;
+      rendered++;
+      ctx.out(formatCounts(lineCount, wordCount, byteCount, label));
+    }
+
+    if (rendered > 1) {
+      ctx.out(formatCounts(totalLines, totalWords, totalBytes, 'total'));
+    }
   },
   man: `WC(1)                        User Commands                       WC(1)
 
@@ -326,6 +414,8 @@ SYNOPSIS
 DESCRIPTION
        Print line, word, and byte counts for each FILE. A word is a non-zero
        length sequence of characters delimited by white space.
+       In PocketTerm, an unterminated final text chunk is counted as a line
+       to keep interactive pipeline behavior intuitive.
 
 OPTIONS
        -l     Print only the newline (line) count.

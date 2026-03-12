@@ -1,7 +1,7 @@
 {
   "name": "pocketterm",
   "private": true,
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "A high-fidelity Rocky Linux 9 terminal simulator built with React and xterm.js.",
   "license": "MIT",
   "keywords": [

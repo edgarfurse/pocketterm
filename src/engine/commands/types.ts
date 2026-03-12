@@ -78,6 +78,12 @@ export interface CommandContext {
   setEnvVar: (key: string, value: string) => void;
   /** Get current environment as key/value entries. */
   getEnvEntries: () => Array<[string, string]>;
+  /** Read current shell aliases. */
+  getAliases: () => Record<string, { cmd: string; prependArgs: string[] }>;
+  /** Define/update one shell alias. */
+  setAlias: (name: string, value: { cmd: string; prependArgs: string[] }) => void;
+  /** Remove one shell alias. Returns true if removed. */
+  removeAlias: (name: string) => boolean;
   /** Trigger a full reboot cycle in the UI state machine. */
   requestReboot: () => void;
   /** Append a line to the simulated system journal. */
