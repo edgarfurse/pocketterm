@@ -11,11 +11,11 @@ function extractStdin(args: string[]): { cleanArgs: string[]; stdin: string | nu
 function readFileChecked(ctx: CommandContext, path: string, label: string): string | null {
   const resolved = ctx.fs.resolvePath(ctx.cwd, path);
   const node = ctx.fs.getNode(resolved);
-  if (!node) { ctx.out(`${label}: ${path}: No such file or directory`); return null; }
-  if (node.type === 'directory') { ctx.out(`${label}: ${path}: Is a directory`); return null; }
+  if (!node) { ctx.err(`${label}: ${path}: No such file or directory`); return null; }
+  if (node.type === 'directory') { ctx.err(`${label}: ${path}: Is a directory`); return null; }
   const effectiveUser = ctx.sudo ? 'root' : ctx.user;
   const content = ctx.fs.readFile(resolved, effectiveUser);
-  if (content === null) { ctx.out(`${label}: ${path}: Permission denied`); return null; }
+  if (content === null) { ctx.err(`${label}: ${path}: Permission denied`); return null; }
   return content;
 }
 
@@ -31,7 +31,7 @@ const cat: CommandDefinition = {
   async execute(args, ctx) {
     const { cleanArgs, stdin } = extractStdin(args);
     const files = cleanArgs.filter((a) => !a.startsWith('-'));
-    if (files.length === 0 && stdin === null) { ctx.out('cat: missing operand'); return; }
+    if (files.length === 0 && stdin === null) { ctx.err('cat: missing operand'); return; }
     if (stdin !== null && files.length === 0) {
       ctx.out(stdin);
       return;
@@ -85,7 +85,7 @@ const grep: CommandDefinition = {
     const nonFlags = cleanArgs.filter((a) => !a.startsWith('-'));
     const pattern = nonFlags[0];
     const filePath = nonFlags[1];
-    if (!pattern) { ctx.out('Usage: grep [OPTION]... PATTERN [FILE]'); return; }
+    if (!pattern) { ctx.err('Usage: grep [OPTION]... PATTERN [FILE]'); return; }
 
     let content: string | null = null;
     if (filePath) {
@@ -93,7 +93,7 @@ const grep: CommandDefinition = {
     } else if (stdin !== null) {
       content = stdin;
     } else {
-      ctx.out('Usage: grep [OPTION]... PATTERN [FILE]');
+      ctx.err('Usage: grep [OPTION]... PATTERN [FILE]');
       return;
     }
     if (content === null) return;
@@ -164,7 +164,7 @@ const head: CommandDefinition = {
     } else if (stdin !== null) {
       content = stdin;
     } else {
-      ctx.out('head: missing operand');
+      ctx.err('head: missing operand');
       return;
     }
     if (content === null) return;
@@ -219,7 +219,7 @@ const tail: CommandDefinition = {
     } else if (stdin !== null) {
       content = stdin;
     } else {
-      ctx.out('tail: missing operand');
+      ctx.err('tail: missing operand');
       return;
     }
     if (content === null) return;
@@ -322,7 +322,7 @@ const wc: CommandDefinition = {
         continue;
       }
       if (arg.startsWith('--')) {
-        ctx.out(`wc: unrecognized option '${arg}'`);
+        ctx.err(`wc: unrecognized option '${arg}'`);
         ctx.setExitCode(1);
         return;
       }
@@ -332,7 +332,7 @@ const wc: CommandDefinition = {
           else if (ch === 'w') showWords = true;
           else if (ch === 'c') showBytes = true;
           else {
-            ctx.out(`wc: invalid option -- '${ch}'`);
+            ctx.err(`wc: invalid option -- '${ch}'`);
             ctx.setExitCode(1);
             return;
           }
@@ -350,7 +350,7 @@ const wc: CommandDefinition = {
     const explicitInputs = positional.length > 0;
     const inputSpecs = explicitInputs ? positional : ['-'];
     if (!explicitInputs && stdin === null) {
-      ctx.out('wc: missing operand');
+      ctx.err('wc: missing operand');
       ctx.setExitCode(1);
       return;
     }
@@ -373,7 +373,7 @@ const wc: CommandDefinition = {
       let label = '';
       if (spec === '-') {
         if (stdin === null) {
-          ctx.out('wc: -: No such file or directory');
+          ctx.err('wc: -: No such file or directory');
           ctx.setExitCode(1);
           continue;
         }
@@ -467,7 +467,7 @@ const less: CommandDefinition = {
     } else if (stdin !== null) {
       content = stdin;
     } else {
-      ctx.out('less: missing operand');
+      ctx.err('less: missing operand');
       return;
     }
     if (content === null) return;

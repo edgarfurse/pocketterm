@@ -333,9 +333,14 @@ describe('shell package path integration', () => {
     );
 
     let start = outputs.length;
+    await shell.execute('ls | grep Down');
+    const lsGrepOut = outputs.slice(start).join('').trim();
+    expect(lsGrepOut).toBe('Downloads');
+
+    start = outputs.length;
     await shell.execute('ls | wc -l');
     const lsWcOut = outputs.slice(start).join('').trim();
-    expect(lsWcOut).toBe('1');
+    expect(lsWcOut).toBe('2');
 
     start = outputs.length;
     await shell.execute('echo alpha beta gamma | wc -w');
@@ -368,6 +373,18 @@ describe('shell package path integration', () => {
     await shell.execute('cat nonl.txt | grep -c foo');
     const grepCountUnterminated = outputs.slice(start).join('').trim();
     expect(grepCountUnterminated).toBe('1');
+
+    start = outputs.length;
+    await shell.execute('ls /root | grep Permission');
+    const stderrPipeOut = outputs.slice(start).join('');
+    expect(stderrPipeOut).toContain('bash: ls: /root: Permission denied');
+    expect(stderrPipeOut).not.toContain('Permission denied\r\nPermission denied');
+
+    start = outputs.length;
+    await shell.execute('cat missing.txt | wc -l');
+    const missingPipeOut = outputs.slice(start).join('');
+    expect(missingPipeOut).toContain('cat: missing.txt: No such file or directory');
+    expect(missingPipeOut).toContain('0');
 
   });
 });

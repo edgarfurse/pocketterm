@@ -32,6 +32,7 @@ export interface CommandContext {
   setUser: (user: string) => void;
   sudo: boolean;
   out: (s: string) => void;
+  err: (s: string) => void;
   rawOut: (s: string) => void;
   history: string[];
   installedPackages: Set<string>;
@@ -78,6 +79,8 @@ export interface CommandContext {
   setEnvVar: (key: string, value: string) => void;
   /** Get current environment as key/value entries. */
   getEnvEntries: () => Array<[string, string]>;
+  /** Output channel mode for this invocation. */
+  outputMode?: 'terminal' | 'pipe';
   /** Read current shell aliases. */
   getAliases: () => Record<string, { cmd: string; prependArgs: string[] }>;
   /** Define/update one shell alias. */

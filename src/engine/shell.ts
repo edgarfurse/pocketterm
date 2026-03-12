@@ -946,6 +946,7 @@ export class Shell {
     const out = outOverride
       ? (s: string) => outOverride(s)
       : (s: string) => this.onOutput(s + '\r\n');
+    const err = (s: string) => this.onOutput(s + '\r\n');
     const rawOut = rawOutOverride
       ? (s: string) => rawOutOverride(s)
       : (s: string) => this.onOutput(s);
@@ -958,6 +959,7 @@ export class Shell {
       setUser: (u: string) => { this.fs.setCurrentUser(u); this.syncCoreEnv(); },
       sudo,
       out,
+      err,
       rawOut,
       history: this.history,
       installedPackages: this.installedPackages,
@@ -989,6 +991,7 @@ export class Shell {
         persistEnvVars(this.envVars);
       },
       getEnvEntries: () => Array.from(this.envVars.entries()),
+      outputMode: outOverride ? 'pipe' : 'terminal',
       getAliases: () => {
         const out: Record<string, { cmd: string; prependArgs: string[] }> = {};
         for (const [k, v] of Object.entries(this.aliases)) {

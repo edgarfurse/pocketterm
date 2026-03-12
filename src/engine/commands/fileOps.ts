@@ -38,9 +38,9 @@ const ls: CommandDefinition = {
     const target = args.find((a) => !a.startsWith('-')) ?? '.';
     const resolved = ctx.fs.resolvePath(ctx.cwd, target);
     const node = ctx.fs.getNode(resolved);
-    if (!node) { ctx.out(`ls: cannot access '${target}': No such file or directory`); return; }
+    if (!node) { ctx.err(`ls: cannot access '${target}': No such file or directory`); return; }
     if (node.type === 'directory' && !ctx.fs.canRead(node, ctx.sudo ? 'root' : ctx.user)) {
-      ctx.out(`bash: ls: ${resolved}: Permission denied`); return;
+      ctx.err(`bash: ls: ${resolved}: Permission denied`); return;
     }
     let list = ctx.fs.listDir(resolved, ctx.sudo ? 'root' : ctx.user);
     if (!showAll) list = list.filter((n) => !n.startsWith('.'));
@@ -55,7 +55,11 @@ const ls: CommandDefinition = {
         ctx.out(`${perms} 1 ${child.owner.padEnd(6)} ${child.group.padEnd(6)} ${String(size).padStart(5)} Jan  1 00:00 ${name}`);
       }
     } else {
-      ctx.out(list.join('  '));
+      if (ctx.outputMode === 'pipe') {
+        for (const name of list) ctx.out(name);
+      } else {
+        ctx.out(list.join('  '));
+      }
     }
   },
   man: `LS(1)                        User Commands                        LS(1)

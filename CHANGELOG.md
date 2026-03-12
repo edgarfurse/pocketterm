@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.10.4 - 2026-03-10
+
+### Changed
+
+- Fixed pipeline filtering fidelity so `ls | grep <pattern>` behaves line-by-line; `ls` now emits one entry per line when running in pipe mode while preserving compact terminal output
+- Separated stdout/stderr command channels so pipeline stdin consumes only stdout and no longer accidentally ingests upstream error messages
+- Routed core text/file command error surfaces to stderr for realistic shell stream behavior (`ls`, `cat`, `grep`, `head`, `tail`, `wc`, `less`)
+- Added integration regressions covering `ls | grep Down`, stderr-not-piped behavior (`ls /root | grep Permission`), and missing-file piping with `cat ... | wc -l`
+
 ## 0.10.3 - 2026-03-10
 
 ### Changed
