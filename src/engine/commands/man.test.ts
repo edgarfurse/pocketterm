@@ -101,6 +101,31 @@ describe('man command', () => {
     expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('LYNX(1)'));
   });
 
+  it('shows less cheatsheet keys in yellow note styling', async () => {
+    const ctx = makeCtx();
+    ctx.getTutorialMode = () => ({ id: 'test' } as unknown as never);
+    const lessDef = {
+      name: 'less',
+      execute: async () => {},
+      man: `LESS(1)
+
+CHEATSHEET
+       /text  search forward for text
+       ?text  search backward for text
+       n/N    next/previous search match`,
+    };
+    ctx.registry.set('less', lessDef);
+
+    await manCmd.execute(['less'], ctx);
+
+    const calls = (ctx.out as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((c) => String(c[0]));
+    expect(calls.some((line) => line.includes('\u001b[33mCHEATSHEET\u001b[0m'))).toBe(true);
+    expect(calls.some((line) => line.includes('/text'))).toBe(true);
+    expect(calls.some((line) => line.includes('?text'))).toBe(true);
+    expect(calls.some((line) => line.includes('n/N'))).toBe(true);
+  });
+
   it('routes terminal man output through less pager when available', async () => {
     const ctx = makeCtx();
     const lessExecute = vi.fn(async () => {});
@@ -110,6 +135,10 @@ describe('man command', () => {
     await manCmd.execute(['bash'], ctx);
 
     expect(lessExecute).toHaveBeenCalled();
+    const calls = (lessExecute as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const calledArgs = (calls[0]?.[0] ?? []) as string[];
+    expect(calledArgs).toContain('--man-pager');
+    expect(calledArgs).toContain('--label=bash(1)');
   });
 
   it('does not use pager in pipe mode', async () => {

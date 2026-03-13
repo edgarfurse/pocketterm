@@ -460,7 +460,15 @@ const less: CommandDefinition = {
   name: 'less',
   async execute(args, ctx) {
     const { cleanArgs, stdin } = extractStdin(args);
-    const effectiveArgs = cleanArgs.filter((a) => a !== '--man-pager');
+    let explicitLabel: string | null = null;
+    const effectiveArgs = cleanArgs.filter((a) => {
+      if (a === '--man-pager') return false;
+      if (a.startsWith('--label=')) {
+        explicitLabel = a.slice('--label='.length);
+        return false;
+      }
+      return true;
+    });
     const filePath = effectiveArgs.find((a) => !a.startsWith('-'));
     let content: string | null = null;
     if (filePath) {
@@ -479,6 +487,7 @@ const less: CommandDefinition = {
     let quit = false;
     let searchMode = false;
     let searchBuffer = '';
+    let searchDirection: 1 | -1 = 1;
     let lastSearch = '';
     let lastDirection: 1 | -1 = 1;
     let flashStatus: string | null = null;
@@ -509,14 +518,21 @@ const less: CommandDefinition = {
       for (const l of page) ctx.out(l);
       let status: string;
       if (searchMode) {
-        status = `/${searchBuffer}`;
+        const prefix = searchDirection === 1 ? '/' : '?';
+        status = `${prefix}${searchBuffer}`;
       } else if (flashStatus) {
         status = flashStatus;
       } else {
         const end = offset + pageSize >= lines.length;
         const percent = lines.length === 0 ? 100 : Math.min(100, Math.floor(((offset + page.length) / lines.length) * 100));
-        // Keep footer closer to native less: concise position/end marker only.
-        status = end ? '(END)' : `:${percent}%`;
+        const label = explicitLabel ?? filePath ?? 'stdin';
+        if (end) {
+          status = `${label} (END)`;
+        } else {
+          const startLine = Math.min(lines.length, offset + 1);
+          const endLine = Math.min(lines.length, offset + page.length);
+          status = `${label} lines ${startLine}-${endLine}/${lines.length} (${percent}%)`;
+        }
       }
       ctx.rawOut(`\x1b[7m${status}\x1b[0m`);
       flashStatus = null;
@@ -536,13 +552,13 @@ const less: CommandDefinition = {
         }
         if (searchMode) {
           if (key === '\r' || key === '\n') {
-            const found = findMatch(searchBuffer, 1);
+            const found = findMatch(searchBuffer, searchDirection);
             if (found === null) {
               flashStatus = `Pattern not found: ${searchBuffer}`;
             } else {
               offset = clamp(found);
               lastSearch = searchBuffer;
-              lastDirection = 1;
+              lastDirection = searchDirection;
             }
             searchMode = false;
             render();
@@ -571,6 +587,13 @@ const less: CommandDefinition = {
           case '/':
             searchMode = true;
             searchBuffer = '';
+            searchDirection = 1;
+            render();
+            break;
+          case '?':
+            searchMode = true;
+            searchBuffer = '';
+            searchDirection = -1;
             render();
             break;
           case 'n': {
@@ -586,10 +609,7 @@ const less: CommandDefinition = {
             const reverseDirection: 1 | -1 = lastDirection === 1 ? -1 : 1;
             const found = findMatch(lastSearch, reverseDirection);
             if (found === null) flashStatus = `Pattern not found: ${lastSearch}`;
-            else {
-              offset = clamp(found);
-              lastDirection = reverseDirection;
-            }
+            else offset = clamp(found);
             render();
             break;
           }
@@ -646,13 +666,14 @@ EXAMPLES
        less /etc/passwd
        less /var/log/messages
 
-KEYS
+CHEATSHEET
        q      quit
        j/k    move one line down/up
        Space  next page
        b      previous page
        g/G    jump to start/end
        /text  search forward for text
+       ?text  search backward for text
        n/N    next/previous search match
 
 SEE ALSO

@@ -3,6 +3,18 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.11.8 - 2026-03-13
+
+### Added
+
+- Added high-fidelity pager search (`/`, `?`, `n`, `N`) and contextual man-page headers.
+- Added regression checks to ensure `man bash | cat` remains a clean non-interactive text stream without pager artifacts.
+
+### Changed
+
+- Updated `man less` documentation with a yellow `CHEATSHEET` section for pager search/navigation keys.
+- Refined pager status labels to show command context (for example, `bash(1)`) in interactive man-mode paging.
+
 ## 0.11.7 - 2026-03-12
 
 ### Changed

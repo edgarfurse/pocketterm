@@ -623,6 +623,8 @@ describe('shell package path integration', () => {
     expect(out).toContain('BASH(1)');
     expect(out).not.toContain('[q:quit');
     expect(out).not.toContain('\u001b[7m');
+    expect(out).not.toContain('bash(1) (END)');
+    expect(out).not.toMatch(/bash\(1\) lines \d+-\d+\/\d+/);
   });
 
   it('supports less search controls in man pager mode', async () => {
@@ -651,6 +653,35 @@ describe('shell package path integration', () => {
 
     const out = outputs.join('');
     expect(out).toContain('/SYNOPSIS');
+    expect(shell.getLastExitCode()).toBe(0);
+  });
+
+  it('supports backward less search prompt in man pager mode', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    const run = shell.execute('man bash');
+    setTimeout(() => {
+      for (const key of ['?', 'D', 'E', 'S', 'C', 'R', 'I', 'P', 'T', 'I', 'O', 'N', '\r', 'q']) {
+        shell.pushLiveInput(key);
+      }
+    }, 20);
+    await run;
+
+    const out = outputs.join('');
+    expect(out).toContain('?DESCRIPTION');
     expect(shell.getLastExitCode()).toBe(0);
   });
 

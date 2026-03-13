@@ -138,6 +138,7 @@ const man: CommandDefinition = {
   async execute(args, ctx) {
     if (args.length === 0) { ctx.out('What manual page do you want?'); return; }
 
+    const sectionArg = /^\d+$/.test(args[0] ?? '') ? args[0] : null;
     let topicArg = args[0] ?? '';
     if (/^\d+$/.test(topicArg)) {
       topicArg = args[1] ?? '';
@@ -159,7 +160,8 @@ const man: CommandDefinition = {
       if (ctx.outputMode === 'terminal' && ctx.getTutorialMode() === null) {
         const lessCmd = ctx.registry.get('less');
         if (lessCmd) {
-          await lessCmd.execute(['--man-pager', `__stdin__:${renderManLines(resolvedPage, ctx).join('\n')}`], ctx);
+          const manLabel = `${topic}(${sectionArg ?? '1'})`;
+          await lessCmd.execute(['--man-pager', `--label=${manLabel}`, `__stdin__:${renderManLines(resolvedPage, ctx).join('\n')}`], ctx);
           return;
         }
       }

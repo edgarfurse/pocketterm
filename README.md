@@ -116,7 +116,7 @@ Notes:
 
 ---
 
-## Fidelity Notes (0.11.7)
+## Fidelity Notes (0.11.8)
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
@@ -142,6 +142,8 @@ Notes:
 - Command parity now uses a canonical manifest (`src/engine/command-manifest.json`) with auto-stub fallback for missing commands.
 - Manifest stubs follow a consistent runtime contract and roadmap note so workstation command discovery remains predictable.
 - `man` now uses pager flow in terminal mode while remaining stream-safe in pipelines/redirections.
+- `less` pager search now supports `/` (forward), `?` (backward), and `n`/`N` repeat navigation for man-page exploration.
+- Interactive man paging now carries contextual footer labels (for example, `bash(1)`), while `man ... | cat` remains clean stream output.
 - Unknown command typos now emit shell-native “Did you mean …?” suggestions from registry/manifest candidates.
 - Prompt hostname is normalized to `pocketterm` for consistent workstation-style PS1 formatting.
 
