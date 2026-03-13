@@ -68,3 +68,45 @@ describe('help onboarding hook', () => {
     expect(out).toHaveBeenCalledWith("Use 'man pocketterm' for system documentation or run 'pocketterm' to launch the interactive environment manager.");
   });
 });
+
+describe('reboot privilege behavior', () => {
+  const reboot = miscCommands.find((c) => c.name === 'reboot')!;
+
+  it('requires superuser for direct reboot', async () => {
+    const out = vi.fn();
+    const ctx = {
+      user: 'guest',
+      sudo: false,
+      out,
+      rawOut: vi.fn(),
+      requestReboot: vi.fn(),
+    } as unknown as CommandContext;
+
+    await reboot.execute([], ctx);
+
+    expect(out).toHaveBeenCalledWith('reboot: must be superuser');
+    expect(ctx.requestReboot).not.toHaveBeenCalled();
+  });
+});
+
+describe('alias parsing fidelity', () => {
+  const aliasCmd = miscCommands.find((c) => c.name === 'alias')!;
+
+  it('keeps quoted alias arguments as single tokens', async () => {
+    const setAlias = vi.fn();
+    const ctx = {
+      out: vi.fn(),
+      setExitCode: vi.fn(),
+      getAliases: () => ({}),
+      setAlias,
+      removeAlias: vi.fn(),
+    } as unknown as CommandContext;
+
+    await aliasCmd.execute(['greet=echo "hello world"'], ctx);
+
+    expect(setAlias).toHaveBeenCalledWith('greet', {
+      cmd: 'echo',
+      prependArgs: ['hello world'],
+    });
+  });
+});

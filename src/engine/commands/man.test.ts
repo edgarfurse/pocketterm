@@ -12,6 +12,7 @@ function makeCtx(): CommandContext {
     registry: new Map(),
     installedPackages: new Set(),
     out: vi.fn(),
+    outputMode: 'terminal',
   } as unknown as CommandContext;
 }
 
@@ -50,5 +51,52 @@ describe('man command', () => {
     await manCmd.execute(['vi'], ctx);
 
     expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('VI(1)'));
+  });
+
+  it('prefers external man library over command-local man text', async () => {
+    const ctx = makeCtx();
+    ctx.registry.set('bash', {
+      name: 'bash',
+      execute: async () => {},
+      man: 'CUSTOM-BASH(1)\nNAME\n',
+    });
+
+    await manCmd.execute(['bash'], ctx);
+
+    expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('BASH(1)'));
+    expect(ctx.out).not.toHaveBeenCalledWith(expect.stringContaining('CUSTOM-BASH(1)'));
+  });
+
+  it('renders CHEATSHEET sections in yellow in terminal mode', async () => {
+    const ctx = makeCtx();
+    const viDef = miscCommands.find((c) => c.name === 'vi')!;
+    ctx.registry.set('vi', viDef);
+
+    await manCmd.execute(['vi'], ctx);
+
+    const calls = (ctx.out as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((c) => String(c[0]));
+    expect(calls.some((line) => line.includes('\u001b[33mCHEATSHEET\u001b[0m'))).toBe(true);
+  });
+
+  it('suppresses ansi in pipe mode man output', async () => {
+    const ctx = makeCtx();
+    const viDef = miscCommands.find((c) => c.name === 'vi')!;
+    ctx.registry.set('vi', viDef);
+    ctx.outputMode = 'pipe';
+
+    await manCmd.execute(['vi'], ctx);
+
+    const calls = (ctx.out as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((c) => String(c[0]));
+    expect(calls.some((line) => line.includes('\u001b['))).toBe(false);
+  });
+
+  it('includes external man page for lynx', async () => {
+    const ctx = makeCtx();
+
+    await manCmd.execute(['lynx'], ctx);
+
+    expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('LYNX(1)'));
   });
 });

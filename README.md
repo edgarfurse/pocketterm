@@ -116,7 +116,7 @@ Notes:
 
 ---
 
-## Fidelity Notes (0.11.1)
+## Fidelity Notes (0.11.5)
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
@@ -131,6 +131,14 @@ Notes:
 - Stderr-aware redirection now supports `2>`, `2>>`, `2>&1`, and `|&` with bash-like left-to-right intent.
 - Exit-code behavior is hardened for common shell fidelity paths (`127` not found, `2` misuse, `130` interrupt).
 - `ping` and `curl` follow a shared resolver contract: literal IP -> `/etc/hosts` -> DNS fallback.
+- `vi` is now available as a baseline workstation editor, while `vim` remains package-gated.
+- `man` now resolves pages with deterministic precedence: VFS -> external man-page library -> command-local docs -> fallback map.
+- Added `lynx` for text-only webpage rendering (`lynx -dump <url>`).
+- Direct non-root `reboot` now reports `reboot: must be superuser`.
+- Terminal fit behavior is hardened to reduce Chrome/macOS bottom-line clipping artifacts.
+- `man` renders PocketTerm note sections (`POCKETTERM NOTE(S)`, `CHEATSHEET`, `EXTRA`) in yellow in terminal mode and plain text in pipelines/redirections.
+- `vi` is command-registered baseline behavior (not a fallback alias to package-gated `vim`).
+- Alias parsing now preserves quoted argument groups for shell-like alias ergonomics.
 
 ### Intentional Simulator Contracts
 

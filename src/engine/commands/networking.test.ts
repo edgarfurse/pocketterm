@@ -47,6 +47,7 @@ function makeCurlCtx(overrides: Partial<CommandContext> = {}): {
 
 describe('curl command fidelity', () => {
   const curl = networkingCommands.find((c) => c.name === 'curl')!;
+  const lynx = networkingCommands.find((c) => c.name === 'lynx')!;
   const ping = networkingCommands.find((c) => c.name === 'ping')!;
 
   beforeEach(() => {
@@ -160,5 +161,36 @@ describe('curl command fidelity', () => {
     await curl.execute(['http://invalid-host'], h.ctx);
     expect(h.getExitCode()).toBe(6);
     expect(h.outLines.join('\n')).toContain('Could not resolve host');
+  });
+
+  it('renders text-only output via lynx', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => '<html><body><h1>Docs</h1><p>Hello <a href="https://example.com">example</a></p></body></html>',
+      headers: new Headers(),
+    })));
+
+    const h = makeCurlCtx();
+    await lynx.execute(['-dump', 'https://example.com'], h.ctx);
+
+    const out = h.outLines.join('\n');
+    expect(out).toContain('URL: https://example.com/');
+    expect(out).toContain('Docs');
+    expect(out).toContain('example (https://example.com)');
+    expect(h.getExitCode()).toBeNull();
+  });
+
+  it('maps fetch failures to lynx connect error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }));
+
+    const h = makeCurlCtx();
+    await lynx.execute(['https://offline.example'], h.ctx);
+
+    expect(h.getExitCode()).toBe(7);
+    expect(h.outLines.join('\n')).toContain('lynx: (7) Failed to connect');
   });
 });

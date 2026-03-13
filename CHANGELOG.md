@@ -3,6 +3,34 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.11.5 - 2026-03-12
+
+### Fixed
+
+- Resolved command availability regressions so `vi` and `lynx` are first-class registered commands (no fallback alias dependency for `vi`)
+- Hardened alias value parsing to preserve quoted argument groups, improving shell-like alias behavior for real admin workflows
+
+### Added
+
+- Added yellow-note man rendering for `POCKETTERM NOTE(S)`, `CHEATSHEET`, and `EXTRA` sections in terminal mode
+- Added `CHEATSHEET` section to `man vi` and expanded external man library notes for `bash`, `ls`, `grep`, and `lynx`
+- Added external `lynx` manual entry in the JSON man-page library and regression coverage for ANSI/no-ANSI man rendering modes
+
+## 0.11.4 - 2026-03-12
+
+### Added
+
+- Added a lightweight `lynx` text-browser command with `-dump` support for terminal-readable webpage output and curl-aligned network error families
+- Added external manual-page library at `src/engine/man-pages.json` with expanded `bash`, `ls`, and `grep` reference content
+- Added regression tests for external man-page precedence, reboot privilege wording, `lynx` output/error behavior, and always-available `vi`
+
+### Changed
+
+- Updated `man` lookup precedence to: VFS page (`/usr/share/man/man1/*`) -> external JSON library -> command-local man text -> legacy fallback map
+- Updated `vi` availability to be workstation-style baseline (no `vim` package gate), while keeping `vim` install-gated
+- Updated reboot permission wording to `reboot: must be superuser` for non-privileged direct invocation
+- Hardened terminal fit behavior to reduce Chrome/macOS bottom-line clipping via multi-pass fitting and resize observer updates
+
 ## 0.11.3 - 2026-03-12
 
 ### Fixed

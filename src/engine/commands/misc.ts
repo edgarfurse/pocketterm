@@ -4,6 +4,95 @@ import { FileSystem } from '../fileSystem';
 import { DEFAULT_TUTORIALS, type TutorialCartridge } from '../tutorials';
 import { exportSystemState, importSystemState } from '../storage';
 import { getManPage } from '../manPages';
+import externalManPagesRaw from '../man-pages.json?raw';
+
+const EXTERNAL_MAN_PAGES: Record<string, string> = (() => {
+  try {
+    const parsed = JSON.parse(externalManPagesRaw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string' && value.trim()) {
+        out[key.toLowerCase()] = value;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+})();
+
+function renderManPage(page: string, ctx: Parameters<CommandDefinition['execute']>[1]): void {
+  const colorize = ctx.outputMode !== 'pipe';
+  const yellowSections = new Set(['POCKETTERM NOTE', 'POCKETTERM NOTES', 'CHEATSHEET', 'EXTRA']);
+  const isHeader = (line: string) => /^[A-Z][A-Z0-9 ()/-]*$/.test(line.trim());
+
+  let inYellowSection = false;
+  for (const line of page.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0 && isHeader(trimmed)) {
+      inYellowSection = yellowSections.has(trimmed);
+    }
+    if (colorize && inYellowSection && trimmed.length > 0) {
+      ctx.out(`\u001b[33m${line}\u001b[0m`);
+    } else {
+      ctx.out(line);
+    }
+  }
+}
+
+function splitAliasValue(input: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  const pushCurrent = () => {
+    if (current.length > 0) {
+      tokens.push(current);
+      current = '';
+    }
+  };
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (inSingle) {
+      if (ch === '\'') inSingle = false;
+      else current += ch;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false;
+      else current += ch;
+      continue;
+    }
+    if (ch === '\'') {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      pushCurrent();
+      continue;
+    }
+    current += ch;
+  }
+  pushCurrent();
+  return tokens;
+}
 
 const POCKETTERM_MAN_PAGE = `POCKETTERM(1)                User Commands                POCKETTERM(1)
 
@@ -51,25 +140,25 @@ const man: CommandDefinition = {
     const fsManPath = `/usr/share/man/man1/${topic}.1`;
     const fsManPage = ctx.fs.readFile(fsManPath, ctx.sudo ? 'root' : ctx.user) ?? ctx.fs.readFile(fsManPath, 'root');
     if (fsManPage !== null) {
-      for (const line of fsManPage.split('\n')) {
-        ctx.out(line);
-      }
+      renderManPage(fsManPage, ctx);
+      return;
+    }
+
+    const externalPage = EXTERNAL_MAN_PAGES[topic];
+    if (externalPage) {
+      renderManPage(externalPage, ctx);
       return;
     }
 
     const cmd = ctx.registry.get(topic);
     if (cmd && cmd.man) {
-      for (const line of cmd.man.split('\n')) {
-        ctx.out(line);
-      }
+      renderManPage(cmd.man, ctx);
       return;
     }
 
     const fallbackPage = getManPage(topic);
     if (fallbackPage) {
-      for (const line of fallbackPage.split('\n')) {
-        ctx.out(line);
-      }
+      renderManPage(fallbackPage, ctx);
       return;
     }
 
@@ -289,7 +378,6 @@ SEE ALSO
 
 const vi: CommandDefinition = {
   name: 'vi',
-  requiresPackage: 'vim',
   async execute(args, ctx) {
     const filePath = args[0];
     if (!filePath) { ctx.out('vi: missing filename'); ctx.setExitCode(1); return; }
@@ -324,9 +412,16 @@ SYNOPSIS
 DESCRIPTION
        vi is the classic UNIX text editor. On Rocky Linux, vi is provided
        by the vim-minimal package (always available), but the full vim
-       experience (syntax highlighting, plugins) requires: dnf install vim
+       experience (syntax highlighting, plugins) requires the full vim package.
 
-       This command requires installation: dnf install vim
+       PocketTerm ships vi as an always-available essentials editor.
+
+CHEATSHEET
+       i      Enter Insert mode
+       Esc    Return to Command mode
+       :w     Save file
+       :q     Quit (fails on unsaved changes)
+       :wq    Save and quit
 
 EXAMPLES
        vi myfile.txt          Open or create myfile.txt.
@@ -778,7 +873,7 @@ const alias_cmd: CommandDefinition = {
       if ((value.startsWith('\'') && value.endsWith('\'')) || (value.startsWith('"') && value.endsWith('"'))) {
         value = value.slice(1, -1);
       }
-      const tokens = value.trim().split(/\s+/).filter(Boolean);
+      const tokens = splitAliasValue(value.trim());
       if (tokens.length === 0) {
         ctx.out(`alias: \`${arg}\`: invalid alias value`);
         ctx.setExitCode(1);
@@ -1025,7 +1120,7 @@ const reboot: CommandDefinition = {
   name: 'reboot',
   async execute(_args, ctx) {
     if (ctx.user !== 'root' && !ctx.sudo) {
-      ctx.out('reboot: Authentication is required');
+      ctx.out('reboot: must be superuser');
       return;
     }
     ctx.rawOut('\x1b[2J\x1b[H');

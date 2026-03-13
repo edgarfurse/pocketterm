@@ -554,4 +554,25 @@ describe('shell package path integration', () => {
       expect(shell.getTutorialMode()).toBeNull();
     }
   });
+
+  it('keeps vi available without requiring vim package install', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('vi notes.txt');
+    expect(shell.getLastExitCode()).toBe(0);
+    expect(outputs.join('')).not.toContain('command not found');
+  });
 });

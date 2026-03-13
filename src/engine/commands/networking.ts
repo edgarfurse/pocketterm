@@ -53,6 +53,36 @@ function resolveNetworkTarget(
   return { kind: 'error', host: target };
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'');
+}
+
+function htmlToPlainText(html: string): string {
+  const withoutDangerous = html
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ');
+  const withLinks = withoutDangerous.replace(
+    /<a\b[^>]*href=["']?([^"'>\s]+)[^>]*>([\s\S]*?)<\/a>/gi,
+    (_match, href: string, label: string) => `${label} (${href})`,
+  );
+  const withBreaks = withLinks
+    .replace(/<\/(h1|h2|h3|h4|h5|h6|p|div|li|tr|section|article)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+  const stripped = withBreaks.replace(/<[^>]+>/g, ' ');
+  const decoded = decodeHtmlEntities(stripped);
+  return decoded
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 const ip: CommandDefinition = {
   name: 'ip',
   async execute(args, ctx) {
@@ -428,6 +458,109 @@ SEE ALSO
        wget(1), ip(8)`,
 };
 
+const lynx: CommandDefinition = {
+  name: 'lynx',
+  async execute(args, ctx) {
+    let urlArg: string | null = null;
+    for (const arg of args) {
+      if (arg === '-dump' || arg === '--dump') continue;
+      if (!arg.startsWith('-') && !urlArg) urlArg = arg;
+    }
+    if (!urlArg) {
+      ctx.out('lynx: usage: lynx [-dump] <url>');
+      ctx.setExitCode(2);
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(urlArg) ? urlArg : `http://${urlArg}`;
+      parsed = new URL(normalized);
+    } catch {
+      ctx.out(`lynx: (6) Could not resolve host: ${urlArg}`);
+      ctx.setExitCode(6);
+      return;
+    }
+
+    const resolution = resolveNetworkTarget(parsed.hostname, ctx);
+    if (resolution.kind === 'error') {
+      ctx.out(`lynx: (6) Could not resolve host: ${parsed.hostname}`);
+      ctx.setExitCode(6);
+      return;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      let response: Response;
+      try {
+        response = await fetch(parsed.toString(), {
+          method: 'GET',
+          redirect: 'follow',
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      if (!response.ok) {
+        ctx.out(`lynx: (22) The requested URL returned error: ${response.status}`);
+        ctx.setExitCode(22);
+        return;
+      }
+
+      const html = await response.text();
+      const text = htmlToPlainText(html);
+      const bytes = new TextEncoder().encode(text).length;
+      ctx.network.recordTransfer(96, Math.max(256, bytes));
+
+      ctx.out(`URL: ${parsed.toString()}`);
+      ctx.out('');
+      for (const line of text.split('\n')) ctx.out(line);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        ctx.out('lynx: (28) Operation timed out after 8000 milliseconds');
+        ctx.setExitCode(28);
+        return;
+      }
+      const message = err instanceof Error ? err.message : '';
+      if (/failed to fetch|networkerror/i.test(message)) {
+        ctx.out(`lynx: (7) Failed to connect to ${parsed.hostname}`);
+        ctx.setExitCode(7);
+        return;
+      }
+      ctx.out(`lynx: (6) Could not resolve host: ${parsed.hostname}`);
+      ctx.setExitCode(6);
+    }
+  },
+  man: `LYNX(1)                     User Commands                    LYNX(1)
+
+NAME
+       lynx - text-mode web browser (simulation)
+
+SYNOPSIS
+       lynx [-dump] URL
+
+DESCRIPTION
+       lynx fetches a web page and renders a plaintext view suitable for
+       terminal workflows. In PocketTerm, this command performs a browser-safe
+       HTTP fetch and converts HTML to readable text.
+
+OPTIONS
+       -dump    Print text-only output for the target page.
+
+EXAMPLES
+       lynx https://example.com
+       lynx -dump example.com
+
+POCKETTERM NOTE
+       lynx uses browser-backed fetch and can be affected by CORS policy,
+       offline conditions, browser privacy settings, or blocked endpoints.
+
+SEE ALSO
+       curl(1), wget(1)`,
+};
+
 const ss: CommandDefinition = {
   name: 'ss',
   async execute(args, ctx) {
@@ -485,4 +618,4 @@ SEE ALSO
        netstat(8), ip(8), systemctl(1)`,
 };
 
-export const networkingCommands: CommandDefinition[] = [ip, ping, nmcli, curl, ss];
+export const networkingCommands: CommandDefinition[] = [ip, ping, nmcli, curl, lynx, ss];
