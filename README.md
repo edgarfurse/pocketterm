@@ -164,4 +164,33 @@ Notes:
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/edgar-furse-7643b3ba/)
 
 ---
+
+## 🚀 PocketTerm: Beyond the Sandbox
+
+PocketTerm now supports two aligned tracks while preserving authentic CLI behavior:
+
+### 🎓 EDU Track (Training Cartridges)
+
+- Guided **Cartridges** provide scenario-based progression without replacing normal shell workflows.
+- Tutorials are the intended place to break the fourth wall with direct instructional language.
+- Yellow-note guidance remains visible inside docs where learners naturally look (`man` + tutorial surfaces).
+
+### 🏢 ENT Track (Operational Enablement)
+
+- Teams can use PocketTerm for realistic command rehearsal with persistent state and stable command contracts.
+- Pager flow, search controls (`/`, `?`, `n`, `N`), and shell ergonomics stay terminal-native for muscle-memory transfer.
+- "Yellow-Note" docs create a safe ramp for new operators while keeping production-like command UX.
+
+### 📬 Inquire
+
+> Interested in EDU cohorts, internal enablement labs, or enterprise customization?
+> Reach out via [LinkedIn](https://www.linkedin.com/in/edgar-furse-7643b3ba/) or [Buy Me a Coffee](https://www.buymeacoffee.com/edgar.ai.dev) to start a conversation.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome. Open an issue for discussion first, then submit focused PRs that keep CLI authenticity and simulator fidelity aligned.
+
+---
 License: MIT
