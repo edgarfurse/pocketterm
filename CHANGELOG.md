@@ -3,6 +3,19 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.11.7 - 2026-03-12
+
+### Changed
+
+- Updated `man` to route terminal-mode rendering through pager flow (`less`) while preserving stream output for pipeline/redirection mode
+- Added shell-level command-not-found suggestion hook with deterministic Levenshtein matching against registry + manifest command sets
+- Normalized local prompt hostname token to `pocketterm` for consistent PS1 fidelity (`[user@host path]$`)
+- Added yellow `POCKETTERM TIP` guidance to `help` and `history` in terminal mode, with plain-text fallback in pipe mode
+
+### Added
+
+- Added regression coverage for pager routing behavior, pipeline-safe `man` output, prompt formatting, typo suggestion behavior, and deterministic suggestion tie handling
+
 ## 0.11.6 - 2026-03-12
 
 ### Added

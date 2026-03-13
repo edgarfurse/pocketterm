@@ -5,6 +5,7 @@ import type { CommandContext, SSHSession, ProcessInfo } from './commands';
 import { loadHardwareState, type HardwareState } from './hardwareState';
 import { DEFAULT_TUTORIAL_IDS, type TutorialCartridge } from './tutorials';
 import { safePersist, triggerBrowserDownload, triggerBrowserUpload } from './storage';
+import { COMMAND_MANIFEST } from './commands/stubs';
 
 export type OutputCallback = (text: string) => void;
 export type ConfirmCallback = (message: string) => Promise<boolean>;
@@ -570,7 +571,7 @@ export class Shell {
   }
 
   private get hostname(): string {
-    return this.sshSession ? this.sshSession.remoteHost : 'pocket-term';
+    return this.sshSession ? this.sshSession.remoteHost : 'pocketterm';
   }
 
   private addJournalEntry(entry: string): void {
@@ -1150,6 +1151,35 @@ export class Shell {
     errOverride: ((s: string) => void) | null,
     pipedInput: string | null,
   ): Promise<number> {
+    const levenshtein = (a: string, b: string): number => {
+      const dp: number[][] = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+      for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+      for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[a.length][b.length];
+    };
+    const bestSuggestion = (input: string): string | null => {
+      const target = input.toLowerCase();
+      if (!target) return null;
+      const candidates = new Set<string>([...commandRegistry.keys(), ...COMMAND_MANIFEST]);
+      let bestName = '';
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const candidate of candidates) {
+        const dist = levenshtein(target, candidate);
+        if (dist < bestDistance || (dist === bestDistance && candidate < bestName)) {
+          bestName = candidate;
+          bestDistance = dist;
+        }
+      }
+      const threshold = target.length <= 4 ? 1 : target.length <= 8 ? 2 : 3;
+      return bestDistance <= threshold ? bestName : null;
+    };
+
     this.pendingExitCodeOverride = null;
 
     if (sudo && !cmd) {
@@ -1238,8 +1268,8 @@ export class Shell {
     const definition = commandRegistry.get(cmd);
     if (definition) {
       if (definition.requiresPackage && !this.installedPackages.has(definition.requiresPackage)) {
-        const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
-        termOut(`bash: ${cmd}: command not found`);
+        const termErr = errOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+        termErr(`bash: ${cmd}: command not found`);
         return 127;
       }
       const ctx = this.buildContext(sudo, outOverride, rawOutOverride, errOverride);
@@ -1258,9 +1288,13 @@ export class Shell {
       return 0;
     }
 
-    const termOut = outOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
+    const termErr = errOverride ?? ((s: string) => this.onOutput(s + '\r\n'));
     if (cmd) {
-      termOut(`bash: ${cmd}: command not found`);
+      termErr(`bash: ${cmd}: command not found`);
+      const suggested = bestSuggestion(cmd);
+      if (suggested && suggested !== cmd) {
+        termErr(`Did you mean '${suggested}'?`);
+      }
       return 127;
     }
     return 0;

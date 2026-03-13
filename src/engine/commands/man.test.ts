@@ -99,4 +99,26 @@ describe('man command', () => {
 
     expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('LYNX(1)'));
   });
+
+  it('routes terminal man output through less pager when available', async () => {
+    const ctx = makeCtx();
+    const lessExecute = vi.fn(async () => {});
+    ctx.registry.set('less', { name: 'less', execute: lessExecute, man: '' });
+    ctx.outputMode = 'terminal';
+
+    await manCmd.execute(['bash'], ctx);
+
+    expect(lessExecute).toHaveBeenCalled();
+  });
+
+  it('does not use pager in pipe mode', async () => {
+    const ctx = makeCtx();
+    const lessExecute = vi.fn(async () => {});
+    ctx.registry.set('less', { name: 'less', execute: lessExecute, man: '' });
+    ctx.outputMode = 'pipe';
+
+    await manCmd.execute(['bash'], ctx);
+
+    expect(lessExecute).not.toHaveBeenCalled();
+  });
 });

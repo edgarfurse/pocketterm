@@ -575,4 +575,75 @@ describe('shell package path integration', () => {
     expect(shell.getLastExitCode()).toBe(0);
     expect(outputs.join('')).not.toContain('command not found');
   });
+
+  it('suggests close command names on typo and keeps contextual prompt format', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('hstory');
+    const out = outputs.join('');
+    expect(out).toContain('bash: hstory: command not found');
+    expect(out).toContain("Did you mean 'history'?");
+
+    expect(shell.getPrompt()).toContain('[guest@pocketterm ~]$ ');
+    await shell.execute('cd /usr/bin');
+    expect(shell.getPrompt()).toContain('[guest@pocketterm /usr/bin]$ ');
+  });
+
+  it('keeps man pipeline output stream-based without pager artifacts', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('man bash | cat');
+    const out = outputs.join('');
+    expect(out).toContain('BASH(1)');
+    expect(out).not.toContain('[q:quit');
+    expect(out).not.toContain('\u001b[7m');
+  });
+
+  it('keeps command-not-found suggestions deterministic for ties', async () => {
+    const outputs: string[] = [];
+    const shell = new Shell(
+      new FileSystem('guest'),
+      new NetworkLogic(),
+      (text) => outputs.push(text),
+      async () => true,
+      async () => null,
+      async () => null,
+      () => {},
+      async () => 'password',
+      () => {},
+      () => {},
+      null,
+    );
+
+    await shell.execute('grp');
+    const out = outputs.join('');
+    expect(out).toContain('bash: grp: command not found');
+    expect(out).toContain("Did you mean 'grep'?");
+  });
 });

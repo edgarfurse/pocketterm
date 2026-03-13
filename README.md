@@ -116,7 +116,7 @@ Notes:
 
 ---
 
-## Fidelity Notes (0.11.6)
+## Fidelity Notes (0.11.7)
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
@@ -141,6 +141,9 @@ Notes:
 - Alias parsing now preserves quoted argument groups for shell-like alias ergonomics.
 - Command parity now uses a canonical manifest (`src/engine/command-manifest.json`) with auto-stub fallback for missing commands.
 - Manifest stubs follow a consistent runtime contract and roadmap note so workstation command discovery remains predictable.
+- `man` now uses pager flow in terminal mode while remaining stream-safe in pipelines/redirections.
+- Unknown command typos now emit shell-native “Did you mean …?” suggestions from registry/manifest candidates.
+- Prompt hostname is normalized to `pocketterm` for consistent workstation-style PS1 formatting.
 
 ### Intentional Simulator Contracts
 

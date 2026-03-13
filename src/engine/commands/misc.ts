@@ -22,11 +22,12 @@ const EXTERNAL_MAN_PAGES: Record<string, string> = (() => {
   }
 })();
 
-function renderManPage(page: string, ctx: Parameters<CommandDefinition['execute']>[1]): void {
+function renderManLines(page: string, ctx: Parameters<CommandDefinition['execute']>[1]): string[] {
   const colorize = ctx.outputMode !== 'pipe';
   const yellowSections = new Set(['POCKETTERM NOTE', 'POCKETTERM NOTES', 'CHEATSHEET', 'EXTRA']);
   const isHeader = (line: string) => /^[A-Z][A-Z0-9 ()/-]*$/.test(line.trim());
 
+  const linesOut: string[] = [];
   let inYellowSection = false;
   for (const line of page.split('\n')) {
     const trimmed = line.trim();
@@ -34,10 +35,17 @@ function renderManPage(page: string, ctx: Parameters<CommandDefinition['execute'
       inYellowSection = yellowSections.has(trimmed);
     }
     if (colorize && inYellowSection && trimmed.length > 0) {
-      ctx.out(`\u001b[33m${line}\u001b[0m`);
+      linesOut.push(`\u001b[33m${line}\u001b[0m`);
     } else {
-      ctx.out(line);
+      linesOut.push(line);
     }
+  }
+  return linesOut;
+}
+
+function renderManPage(page: string, ctx: Parameters<CommandDefinition['execute']>[1]): void {
+  for (const line of renderManLines(page, ctx)) {
+    ctx.out(line);
   }
 }
 
@@ -137,28 +145,25 @@ const man: CommandDefinition = {
     const topic = topicArg.toLowerCase();
     if (!topic) { ctx.out('What manual page do you want?'); return; }
 
+    let resolvedPage: string | null = null;
     const fsManPath = `/usr/share/man/man1/${topic}.1`;
     const fsManPage = ctx.fs.readFile(fsManPath, ctx.sudo ? 'root' : ctx.user) ?? ctx.fs.readFile(fsManPath, 'root');
-    if (fsManPage !== null) {
-      renderManPage(fsManPage, ctx);
-      return;
+    if (fsManPage !== null) resolvedPage = fsManPage;
+    if (resolvedPage === null) resolvedPage = EXTERNAL_MAN_PAGES[topic] ?? null;
+    if (resolvedPage === null) {
+      const cmd = ctx.registry.get(topic);
+      if (cmd && cmd.man) resolvedPage = cmd.man;
     }
-
-    const externalPage = EXTERNAL_MAN_PAGES[topic];
-    if (externalPage) {
-      renderManPage(externalPage, ctx);
-      return;
-    }
-
-    const cmd = ctx.registry.get(topic);
-    if (cmd && cmd.man) {
-      renderManPage(cmd.man, ctx);
-      return;
-    }
-
-    const fallbackPage = getManPage(topic);
-    if (fallbackPage) {
-      renderManPage(fallbackPage, ctx);
+    if (resolvedPage === null) resolvedPage = getManPage(topic);
+    if (resolvedPage !== null) {
+      if (ctx.outputMode === 'terminal') {
+        const lessCmd = ctx.registry.get('less');
+        if (lessCmd) {
+          await lessCmd.execute(['--man-pager', `__stdin__:${renderManLines(resolvedPage, ctx).join('\n')}`], ctx);
+          return;
+        }
+      }
+      renderManPage(resolvedPage, ctx);
       return;
     }
 
@@ -207,6 +212,9 @@ const help: CommandDefinition = {
     ctx.out('Aliases: ll (ls -l), la (ls -la), . (source)');
     ctx.out('Shortcuts: Ctrl+C (kill), Ctrl+L (clear), Ctrl+A/E (line nav), Ctrl+Z (stop)');
     ctx.out("Use 'man pocketterm' for system documentation or run 'pocketterm' to launch the interactive environment manager.");
+    const tip = "Tip: Use 'man [command]' to learn about any utility, even the ones we are still building!";
+    if (ctx.outputMode === 'pipe') ctx.out(`POCKETTERM TIP: ${tip}`);
+    else ctx.out(`\u001b[33mPOCKETTERM TIP: ${tip}\u001b[0m`);
   },
   man: `HELP(1)                  Builtin Commands                HELP(1)
 

@@ -985,6 +985,9 @@ const history_cmd: CommandDefinition = {
     for (let i = 0; i < ctx.history.length; i++) {
       ctx.out(`  ${String(i + 1).padStart(4)}  ${ctx.history[i]}`);
     }
+    const tip = "Tip: Use 'man [command]' to learn about any utility, even the ones we are still building!";
+    if (ctx.outputMode === 'pipe') ctx.out(`POCKETTERM TIP: ${tip}`);
+    else ctx.out(`\u001b[33mPOCKETTERM TIP: ${tip}\u001b[0m`);
   },
   man: `HISTORY(1)                   Builtin Commands                HISTORY(1)
 
