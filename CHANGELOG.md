@@ -3,6 +3,20 @@
 All notable changes to this project are documented in this file.
 
 
+## 0.11.6 - 2026-03-12
+
+### Added
+
+- Added canonical workstation manifest at `src/engine/command-manifest.json` as the single source of truth for command parity coverage
+- Added manifest-driven stub generator so any missing manifest command is auto-registered with a stable v0.11 stub runtime contract
+- Added parity CI contract tests to enforce manifest registration coverage and man-page coverage for the full manifest list
+
+### Changed
+
+- Updated command registry bootstrapping to register implemented commands first, then auto-fill only missing manifest commands with stubs
+- Updated stub contract text and roadmap note wording to the v0.12 roadmap phrasing used in the parity objective
+- Expanded external man-page JSON coverage for manifest stubs so `man <command>` works consistently across the workstation manifest
+
 ## 0.11.5 - 2026-03-12
 
 ### Fixed

@@ -1,0 +1,20 @@
+[
+  "ls", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "ln", "find", "stat", "du", "df", "dd", "sync", "mktemp", "readlink", "dirname", "basename", "realpath",
+  "uname", "hostname", "uptime", "free", "date", "arch", "clear", "reset", "id", "whoami", "groups", "dmesg", "lscpu", "lsusb", "lspci", "hostnamectl",
+  "cat", "head", "tail", "more", "less", "grep", "egrep", "fgrep", "sed", "awk", "wc", "sort", "uniq", "cut", "tr", "join", "paste", "tee", "xargs", "diff", "patch", "strings",
+  "vi", "vim", "nano", "ed",
+  "ip", "nmcli", "nmtui", "ping", "curl", "wget", "lynx", "ssh", "scp", "sftp", "dig", "nslookup", "host", "traceroute", "netstat", "ss",
+  "ps", "top", "htop", "kill", "killall", "pkill", "pgrep", "jobs", "fg", "bg", "nice", "renice", "wait", "sleep", "nohup",
+  "sudo", "su", "chmod", "chown", "chgrp", "umask",
+  "tar", "gzip", "gunzip", "zip", "unzip", "bzip2", "xz", "zcat",
+  "man", "help", "whatis", "apropos", "which", "type", "alias", "unalias", "history", "export", "set", "env", "printenv",
+  "reboot", "shutdown", "halt", "poweroff",
+  "pkexec", "visudo", "authselect", "grub2-editenv",
+  "systemd-analyze", "journalctl", "loginctl", "localectl", "timedatectl", "busctl", "systemd-cat", "systemd-cgls", "systemd-cgtop", "systemd-delta", "systemd-detect-virt", "systemd-escape", "systemd-hwdb", "systemd-id128", "systemd-inhibit", "systemd-machine-id-setup", "systemd-mount", "systemd-notify", "systemd-path", "systemd-run", "systemd-stdio-bridge", "systemd-tmpfiles", "systemd-tty-ask-password-agent",
+  "lsblk", "blkid", "findmnt", "mountpoint", "swapoff", "swapon", "zramctl", "lsipc", "lslocks", "lsns", "prlimit", "whereis", "wdctl", "blkdiscard", "blkzone", "ctrlaltdel", "fstrim",
+  "ldconfig", "update-ca-trust", "openssl", "ca-legacy", "p11-kit", "trust", "gpg", "gpg-agent", "gpgv",
+  "ssh-add", "ssh-agent", "ssh-keygen", "ssh-keyscan",
+  "chattr", "lsattr", "file", "truncate", "fallocate", "namei", "rev", "column", "hexdump", "od", "split", "csplit", "expand", "unexpand", "getent", "iconv", "locale", "capsh", "getcap", "setcap",
+  "nstat", "rtacct", "routel", "lnstat", "bridge", "devlink", "genl", "rdma", "tipc",
+  "useradd", "userdel", "usermod", "groupadd", "groupdel", "groupmod", "gpasswd", "newgrp", "chage", "chfn", "chsh", "expiry", "faillog", "lastlog", "passwd", "vipw", "vigr"
+]

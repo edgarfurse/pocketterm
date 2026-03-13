@@ -116,7 +116,7 @@ Notes:
 
 ---
 
-## Fidelity Notes (0.11.5)
+## Fidelity Notes (0.11.6)
 
 - `curl` reports realistic error families (`(22)`, `(23)`, `(28)`, `(47)`, `(7)`).
 - `cd -` uses `$OLDPWD` and prints the destination path.
@@ -139,6 +139,8 @@ Notes:
 - `man` renders PocketTerm note sections (`POCKETTERM NOTE(S)`, `CHEATSHEET`, `EXTRA`) in yellow in terminal mode and plain text in pipelines/redirections.
 - `vi` is command-registered baseline behavior (not a fallback alias to package-gated `vim`).
 - Alias parsing now preserves quoted argument groups for shell-like alias ergonomics.
+- Command parity now uses a canonical manifest (`src/engine/command-manifest.json`) with auto-stub fallback for missing commands.
+- Manifest stubs follow a consistent runtime contract and roadmap note so workstation command discovery remains predictable.
 
 ### Intentional Simulator Contracts
 

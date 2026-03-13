@@ -8,6 +8,7 @@ import { packageMgmtCommands } from './packageMgmt';
 import { miscCommands } from './misc';
 import { lockedCommands } from './lockedCmds';
 import { sysAdminCommands } from './sysAdmin';
+import { buildManifestStubs } from './stubs';
 import { DEFAULT_ALIASES, cloneDefaultAliases } from './aliases';
 
 export type { CommandDefinition, CommandContext, SSHSession, ProcessInfo } from './types';
@@ -27,6 +28,10 @@ const allCommands: CommandDefinition[] = [
 
 export const commandRegistry = new Map<string, CommandDefinition>();
 for (const cmd of allCommands) {
+  commandRegistry.set(cmd.name, cmd);
+}
+const manifestStubs = buildManifestStubs(new Set(commandRegistry.keys()));
+for (const cmd of manifestStubs) {
   commandRegistry.set(cmd.name, cmd);
 }
 
