@@ -112,6 +112,7 @@ export function TerminalUI({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const hostEl = containerRef.current;
 
     const fs = new FileSystem(initialUser);
     fsRef.current = fs;
@@ -131,12 +132,26 @@ export function TerminalUI({
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(containerRef.current);
+    term.open(hostEl);
+
+    const fitTerminal = () => {
+      fitAddon.fit();
+      term.scrollToBottom();
+    };
 
     // Defer initial fit so the DOM has settled to its final layout dimensions.
     requestAnimationFrame(() => {
-      fitAddon.fit();
+      fitTerminal();
+      // Run a second fit after paint; avoids occasional half-row clipping on Chrome/macOS.
+      setTimeout(fitTerminal, 0);
     });
+    setTimeout(fitTerminal, 60);
+    let disposed = false;
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      void (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready.then(() => {
+        if (!disposed) fitTerminal();
+      });
+    }
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -469,15 +484,18 @@ export function TerminalUI({
 
     term.onData(handleData);
 
-    const handleResize = () => {
-      fitAddon.fit();
-      term.scrollToBottom();
-    };
+    const handleResize = () => fitTerminal();
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => fitTerminal())
+      : null;
+    resizeObserver?.observe(hostEl);
 
     window.addEventListener('resize', handleResize);
 
     return () => {
+      disposed = true;
       window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
       term.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;

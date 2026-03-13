@@ -37,4 +37,18 @@ describe('man command', () => {
 
     expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('POCKETTERM(1)'));
   });
+
+  it('shows builtin man text even when command package is not installed', async () => {
+    const ctx = makeCtx();
+    ctx.registry.set('vi', {
+      name: 'vi',
+      requiresPackage: 'vim',
+      execute: async () => {},
+      man: 'VI(1)\nNAME\n       vi - visual editor\n',
+    });
+
+    await manCmd.execute(['vi'], ctx);
+
+    expect(ctx.out).toHaveBeenCalledWith(expect.stringContaining('VI(1)'));
+  });
 });

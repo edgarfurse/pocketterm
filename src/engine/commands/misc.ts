@@ -59,10 +59,6 @@ const man: CommandDefinition = {
 
     const cmd = ctx.registry.get(topic);
     if (cmd && cmd.man) {
-      if (cmd.requiresPackage && !ctx.installedPackages.has(cmd.requiresPackage)) {
-        ctx.out(`No manual entry for ${args[0]}`);
-        return;
-      }
       for (const line of cmd.man.split('\n')) {
         ctx.out(line);
       }
