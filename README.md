@@ -187,7 +187,7 @@ PocketTerm now supports two aligned tracks while preserving authentic CLI behavi
 ### 📬 Inquire: Partnering for Pilot Programs
 
 > Interested in partnering on pilot programs for classrooms, onboarding cohorts, or simulation-led technical enablement?
-> Reach out via [LinkedIn](https://www.linkedin.com/in/edgar-furse-7643b3ba/) or [Buy Me a Coffee](https://www.buymeacoffee.com/edgar.ai.dev) to start a conversation.
+> Reach out via [LinkedIn](https://www.linkedin.com/in/edgar-furse-7643b3ba/) or [Buy Me a Coffee](https://buymeacoffee.com/edgarfurse) to start a conversation.
 
 ---
 
